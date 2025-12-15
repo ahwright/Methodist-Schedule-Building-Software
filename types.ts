@@ -18,6 +18,31 @@ export enum AssignmentType {
   ELECTIVE = 'ELECTIVE',
   VACATION = 'VAC',
   MET_WARDS = 'Met Wards', // Fallback or extra ward
+  
+  // PGY1 Required Electives
+  CARDS = 'Cards',
+  ID = 'ID',
+  NEPH = 'Neph',
+  PULM = 'Pulm',
+  
+  // PGY2 Required Rotations
+  ONC = 'Onc',
+  NEURO = 'Neuro',
+  RHEUM = 'Rheum',
+  
+  // PGY3 Required Electives
+  ADD_MED = 'Add Med',
+  ENDO = 'Endo',
+  GERI = 'Geri',
+  HPC = 'HPC', // Hospice & Palliative Care
+
+  // Voluntary / Other Electives (Available to all years)
+  METRO = 'Metro',
+  RESEARCH = 'Research',
+  CCMA = 'CCMA',
+  HF = 'Heart Failure',
+  CC_ICU = 'Cardiac ICU',
+  ENT = 'ENT',
 }
 
 export interface ScheduleCell {

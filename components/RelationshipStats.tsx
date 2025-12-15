@@ -32,7 +32,8 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
       AssignmentType.NIGHT_FLOAT,
       AssignmentType.EM,
       AssignmentType.CLINIC,
-      AssignmentType.MET_WARDS
+      AssignmentType.MET_WARDS,
+      AssignmentType.METRO, // Added Metro ICU
     ];
 
     for (let w = 0; w < 52; w++) {
