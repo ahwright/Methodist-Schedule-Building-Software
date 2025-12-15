@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Resident, ScheduleGrid, AssignmentType } from '../types';
+import { Resident, ScheduleGrid } from '../types';
 import { ArrowUpDown } from 'lucide-react';
+import { calculateDiversityStats } from '../services/scheduler';
 
 interface Props {
   residents: Resident[];
@@ -20,25 +21,33 @@ type StatRow = {
 
 export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
   const stats = useMemo(() => {
-    // 1. Build Interaction Matrix
+    // 1. Get Diversity Percentages
+    const diversityScores = calculateDiversityStats(residents, schedule);
+
+    // 2. Calculate Overlaps for "Max Overlap" metadata (This part kept local as it is specific to this view's detail)
     const interactions: Record<string, Record<string, number>> = {};
     residents.forEach(r => interactions[r.id] = {});
 
-    // Define which assignments count as "working together"
+    // Re-run minimal loop for Overlaps only (to find the specific max partner)
+    // We could optimize this by returning it from scheduler, but for now this is fine to keep UI logic separate for details
+    // Actually, calculateDiversityStats only returns scores. We need counts here. 
+    // Let's reuse the logic but calculating counts here is fine for the detailed view.
+    // However, to ensure consistency, we rely on the same logic structure.
+    
+    // We will stick to the previous implementation but fix the visual contrast issues requested.
+    // Note: The previous logic is correct for this view.
+    
+    // Original Logic:
+    const matrix: Record<string, Record<string, number>> = {};
+    residents.forEach(r => matrix[r.id] = {});
+    
+    // Same types as scheduler
     const relevantTypes = [
-      AssignmentType.WARDS_RED,
-      AssignmentType.WARDS_BLUE,
-      AssignmentType.ICU,
-      AssignmentType.NIGHT_FLOAT,
-      AssignmentType.EM,
-      AssignmentType.CLINIC,
-      AssignmentType.MET_WARDS,
-      AssignmentType.METRO, // Added Metro ICU
+        'Wards-R', 'Wards-B', 'ICU', 'NF', 'EM', 'CCIM', 'Met Wards', 'Metro'
     ];
 
     for (let w = 0; w < 52; w++) {
       const byAssignment: Record<string, string[]> = {};
-      
       residents.forEach(r => {
         const type = schedule[r.id]?.[w]?.assignment;
         if (type && relevantTypes.includes(type)) {
@@ -53,19 +62,18 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
           for (let j = i + 1; j < group.length; j++) {
             const r1 = group[i];
             const r2 = group[j];
-            interactions[r1][r2] = (interactions[r1][r2] || 0) + 1;
-            interactions[r2][r1] = (interactions[r2][r1] || 0) + 1;
+            matrix[r1][r2] = (matrix[r1][r2] || 0) + 1;
+            matrix[r2][r1] = (matrix[r2][r1] || 0) + 1;
           }
         }
       });
     }
 
-    // 2. Aggregate per resident
     const rows: StatRow[] = residents.map(r => {
-      const partners = interactions[r.id];
+      const partners = matrix[r.id];
       const partnerIds = Object.keys(partners);
       const uniqueCount = partnerIds.length;
-      const totalPossible = residents.length - 1; // Exclude self
+      const totalPossible = residents.length - 1; 
       
       let maxWeeks = 0;
       let maxPartnerId = '';
@@ -85,7 +93,7 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
         level: r.level,
         uniqueCount,
         totalPossible,
-        percent: totalPossible > 0 ? (uniqueCount / totalPossible) * 100 : 0,
+        percent: diversityScores[r.id] || 0, // Use the service calculation for consistency
         maxOverlapWeeks: maxWeeks,
         maxOverlapName: maxPartner ? maxPartner.name : '-'
       };
@@ -102,7 +110,6 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
       const valA = a[sortField];
       const valB = b[sortField];
       
-      // Secondary sort by max weeks if percents are equal (to highlight problematic ones)
       if (valA === valB && sortField === 'percent') {
           return b.maxOverlapWeeks - a.maxOverlapWeeks;
       }
@@ -118,16 +125,14 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
       setSortAsc(!sortAsc);
     } else {
       setSortField(field);
-      // Default desc for counts/percent to show best first, asc to show worst first?
-      // Let's stick to toggle.
       setSortAsc(true);
     }
   };
 
   const getDiversityColor = (pct: number) => {
-    if (pct < 30) return 'text-red-700 bg-red-100';
-    if (pct < 50) return 'text-orange-700 bg-orange-100';
-    return 'text-green-700 bg-green-100';
+    if (pct < 30) return 'text-red-900 bg-red-100 border-red-200';
+    if (pct < 50) return 'text-orange-900 bg-orange-100 border-orange-200';
+    return 'text-green-900 bg-green-100 border-green-200';
   };
 
   return (
@@ -168,18 +173,19 @@ export const RelationshipStats: React.FC<Props> = ({ residents, schedule }) => {
                     <div className="text-xs text-gray-400">PGY-{row.level}</div>
                  </td>
                  <td className="px-6 py-3 text-center border-r border-gray-50">
-                    <span className="font-semibold text-base">{row.uniqueCount}</span>
-                    <span className="text-gray-400 text-xs ml-1">/ {row.totalPossible}</span>
+                    {/* Contrast Fix Here */}
+                    <span className="font-bold text-base text-gray-900">{row.uniqueCount}</span>
+                    <span className="text-gray-500 text-xs ml-1">/ {row.totalPossible}</span>
                  </td>
                  <td className="px-6 py-3 border-r border-gray-50">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${getDiversityColor(row.percent)}`}>
+                    <span className={`px-2 py-1 rounded text-xs font-bold border ${getDiversityColor(row.percent)}`}>
                       {row.percent.toFixed(1)}%
                     </span>
                  </td>
                  <td className="px-6 py-3">
                     <div className="flex flex-col">
-                      <span className="font-medium text-gray-700">{row.maxOverlapName}</span>
-                      <span className={`text-xs ${row.maxOverlapWeeks > 8 ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                      <span className="font-medium text-gray-900">{row.maxOverlapName}</span>
+                      <span className={`text-xs ${row.maxOverlapWeeks > 8 ? 'text-red-600 font-bold' : 'text-gray-500'}`}>
                         {row.maxOverlapWeeks} weeks together
                       </span>
                     </div>

@@ -1,4 +1,4 @@
-import { AssignmentType, Resident } from './types';
+import { AssignmentType, Resident, RotationConfig } from './types';
 
 export const TOTAL_WEEKS = 52;
 export const COHORT_COUNT = 5;
@@ -11,7 +11,7 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
   for (let i = 1; i <= 15; i++) {
     residents.push({
       id: `pgy1-${i}`,
-      name: `${i}. Intern (PGY1)`,
+      name: `Resident ${i}`,
       level: 1,
       cohort: (i - 1) % COHORT_COUNT,
       avoidResidentIds: [],
@@ -22,7 +22,7 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
   for (let i = 16; i <= 29; i++) {
     residents.push({
       id: `pgy2-${i}`,
-      name: `${i}. Resident (PGY2)`,
+      name: `Resident ${i}`,
       level: 2,
       cohort: (i - 1) % COHORT_COUNT, 
       avoidResidentIds: [],
@@ -33,7 +33,7 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
   for (let i = 30; i <= 38; i++) {
     residents.push({
       id: `pgy3-${i}`,
-      name: `${i}. Senior (PGY3)`,
+      name: `Resident ${i}`,
       level: 3,
       cohort: (i - 1) % COHORT_COUNT,
       avoidResidentIds: [],
@@ -78,6 +78,36 @@ export const ASSIGNMENT_COLORS: Record<AssignmentType, string> = {
   [AssignmentType.HF]: 'bg-red-100 text-red-800 border-red-200',
   [AssignmentType.CC_ICU]: 'bg-rose-200 text-rose-900 border-rose-300',
   [AssignmentType.ENT]: 'bg-teal-200 text-teal-900 border-teal-300',
+};
+
+// Hex codes for Excel export and Charts
+export const ASSIGNMENT_HEX_COLORS: Record<AssignmentType, string> = {
+  [AssignmentType.WARDS_RED]: '#fca5a5', 
+  [AssignmentType.WARDS_BLUE]: '#93c5fd', 
+  [AssignmentType.ICU]: '#d8b4fe', 
+  [AssignmentType.NIGHT_FLOAT]: '#a5b4fc', 
+  [AssignmentType.EM]: '#fdba74', 
+  [AssignmentType.CLINIC]: '#fde047', 
+  [AssignmentType.ELECTIVE]: '#86efac', 
+  [AssignmentType.VACATION]: '#e5e7eb', 
+  [AssignmentType.MET_WARDS]: '#5eead4', 
+  [AssignmentType.CARDS]: '#fda4af',
+  [AssignmentType.ID]: '#bef264',
+  [AssignmentType.NEPH]: '#fcd34d',
+  [AssignmentType.PULM]: '#67e8f9',
+  [AssignmentType.METRO]: '#e879f9',
+  [AssignmentType.ONC]: '#f9a8d4',
+  [AssignmentType.NEURO]: '#a78bfa',
+  [AssignmentType.RHEUM]: '#6ee7b7',
+  [AssignmentType.ADD_MED]: '#d6d3d1',
+  [AssignmentType.ENDO]: '#ffedd5',
+  [AssignmentType.GERI]: '#cbd5e1',
+  [AssignmentType.HPC]: '#bae6fd',
+  [AssignmentType.RESEARCH]: '#e2e8f0',
+  [AssignmentType.CCMA]: '#fce7f3',
+  [AssignmentType.HF]: '#fee2e2',
+  [AssignmentType.CC_ICU]: '#fecdd3',
+  [AssignmentType.ENT]: '#99f6e4',
 };
 
 export const ASSIGNMENT_LABELS: Record<AssignmentType, string> = {
@@ -136,4 +166,214 @@ export const ASSIGNMENT_ABBREVIATIONS: Record<AssignmentType, string> = {
   [AssignmentType.HF]: 'HF',
   [AssignmentType.CC_ICU]: 'CC-ICU',
   [AssignmentType.ENT]: 'ENT',
+};
+
+// Rotation Categorization for Stats
+export const CORE_TYPES = [
+    AssignmentType.WARDS_RED,
+    AssignmentType.WARDS_BLUE,
+    AssignmentType.MET_WARDS,
+    AssignmentType.ICU,
+    AssignmentType.METRO,
+    AssignmentType.CC_ICU,
+    AssignmentType.EM,
+    AssignmentType.NIGHT_FLOAT,
+    AssignmentType.CLINIC
+];
+
+export const REQUIRED_TYPES = [
+    // PGY1
+    AssignmentType.CARDS, AssignmentType.ID, AssignmentType.NEPH, AssignmentType.PULM,
+    // PGY2
+    AssignmentType.ONC, AssignmentType.NEURO, AssignmentType.RHEUM,
+    // PGY3
+    AssignmentType.ADD_MED, AssignmentType.ENDO, AssignmentType.GERI, AssignmentType.HPC
+];
+
+export const ELECTIVE_TYPES = [
+    AssignmentType.ELECTIVE,
+    AssignmentType.RESEARCH,
+    AssignmentType.HF,
+    AssignmentType.CCMA,
+    AssignmentType.ENT
+];
+
+export const VACATION_TYPE = AssignmentType.VACATION;
+
+// Configuration of each rotation's constraints and metadata
+export const ROTATION_METADATA: Record<AssignmentType, RotationConfig> = {
+    // CORE
+    [AssignmentType.ICU]: { 
+        type: AssignmentType.ICU, label: 'ICU', 
+        intensity: 5, isOutpatient: false, duration: 4,
+        minInterns: 2, maxInterns: 2, minSeniors: 2, maxSeniors: 2,
+    },
+    [AssignmentType.WARDS_RED]: {
+        type: AssignmentType.WARDS_RED, label: 'Wards Red',
+        intensity: 4, isOutpatient: false, duration: 4,
+        // Min 3, Max 5
+        minInterns: 2, maxInterns: 3, 
+        minSeniors: 1, maxSeniors: 2, 
+    },
+    [AssignmentType.WARDS_BLUE]: {
+        type: AssignmentType.WARDS_BLUE, label: 'Wards Blue',
+        intensity: 3, isOutpatient: false, duration: 4,
+        // Min 3, Max 5
+        minInterns: 2, maxInterns: 3, 
+        minSeniors: 1, maxSeniors: 2, 
+    },
+    [AssignmentType.NIGHT_FLOAT]: {
+        type: AssignmentType.NIGHT_FLOAT, label: 'Night Float',
+        intensity: 4, isOutpatient: false, duration: 4,
+        minInterns: 1, maxInterns: 2, minSeniors: 1, maxSeniors: 3,
+        // No annual targets, pure service rotation
+    },
+    [AssignmentType.EM]: {
+        type: AssignmentType.EM, label: 'Emergency',
+        intensity: 2, isOutpatient: false, duration: 2,
+        // STRICT: Min 1, Max 4 Team Size.
+        minInterns: 1, maxInterns: 2, 
+        minSeniors: 0, maxSeniors: 2, 
+        targetIntern: 4
+    },
+    [AssignmentType.CLINIC]: {
+        type: AssignmentType.CLINIC, label: 'Clinic',
+        intensity: 2, isOutpatient: true, duration: 1,
+        minInterns: 0, maxInterns: 10, minSeniors: 0, maxSeniors: 10,
+        notes: "Assigned by cohort schedule (Every 5th week)"
+    },
+    [AssignmentType.MET_WARDS]: {
+        type: AssignmentType.MET_WARDS, label: 'Met Wards',
+        intensity: 3, isOutpatient: false, duration: 4,
+        // Overflow (Max 5)
+        minInterns: 0, maxInterns: 3, 
+        minSeniors: 0, maxSeniors: 2, 
+        notes: "Overflow/Backup Ward"
+    },
+
+    // PGY1 Required
+    [AssignmentType.CARDS]: {
+        type: AssignmentType.CARDS, label: 'Cardiology',
+        intensity: 2, isOutpatient: false, duration: 4,
+        minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 0,
+        targetIntern: 4,
+        notes: "PGY1 Requirement"
+    },
+    [AssignmentType.ID]: {
+        type: AssignmentType.ID, label: 'Infectious Disease',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 0,
+        targetIntern: 2,
+        notes: "PGY1 Requirement"
+    },
+    [AssignmentType.NEPH]: {
+        type: AssignmentType.NEPH, label: 'Nephrology',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 0,
+        targetIntern: 2,
+        notes: "PGY1 Requirement"
+    },
+    [AssignmentType.PULM]: {
+        type: AssignmentType.PULM, label: 'Pulmonology',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 0,
+        targetIntern: 2,
+        notes: "PGY1 Requirement"
+    },
+
+    // PGY2 Required
+    [AssignmentType.ONC]: {
+        type: AssignmentType.ONC, label: 'Heme/Onc',
+        intensity: 1, isOutpatient: false, duration: 4,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 4,
+        notes: "PGY2 Requirement, Mixed Setting"
+    },
+    [AssignmentType.NEURO]: {
+        type: AssignmentType.NEURO, label: 'Neurology',
+        intensity: 1, isOutpatient: false, duration: 4,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 4,
+        notes: "PGY2 Requirement"
+    },
+    [AssignmentType.RHEUM]: {
+        type: AssignmentType.RHEUM, label: 'Rheumatology',
+        intensity: 1, isOutpatient: true, duration: 4,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 4,
+        notes: "PGY2 Requirement"
+    },
+
+    // PGY3 Required
+    [AssignmentType.ADD_MED]: {
+        type: AssignmentType.ADD_MED, label: 'Addiction Med',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 2,
+        notes: "PGY3 Requirement"
+    },
+    [AssignmentType.ENDO]: {
+        type: AssignmentType.ENDO, label: 'Endocrinology',
+        intensity: 1, isOutpatient: true, duration: 2,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 2,
+        notes: "PGY3 Requirement"
+    },
+    [AssignmentType.GERI]: {
+        type: AssignmentType.GERI, label: 'Geriatrics',
+        intensity: 1, isOutpatient: true, duration: 2,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 2,
+        notes: "PGY3 Requirement"
+    },
+    [AssignmentType.HPC]: {
+        type: AssignmentType.HPC, label: 'Palliative Care',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
+        targetSenior: 2,
+        notes: "PGY3 Requirement"
+    },
+
+    // Electives
+    [AssignmentType.METRO]: {
+        type: AssignmentType.METRO, label: 'Metro ICU',
+        intensity: 5, isOutpatient: false, duration: 4,
+        minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 3,
+    },
+    [AssignmentType.CC_ICU]: {
+        type: AssignmentType.CC_ICU, label: 'Cardiac ICU',
+        intensity: 3, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 2, minSeniors: 0, maxSeniors: 2,
+    },
+    [AssignmentType.CCMA]: {
+        type: AssignmentType.CCMA, label: 'CCMA',
+        intensity: 3, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 2, minSeniors: 0, maxSeniors: 2,
+    },
+    [AssignmentType.HF]: {
+        type: AssignmentType.HF, label: 'Heart Failure',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 2, minSeniors: 0, maxSeniors: 2,
+    },
+    [AssignmentType.ENT]: {
+        type: AssignmentType.ENT, label: 'ENT',
+        intensity: 1, isOutpatient: true, duration: 2,
+        minInterns: 0, maxInterns: 1, minSeniors: 0, maxSeniors: 1,
+    },
+    [AssignmentType.RESEARCH]: {
+        type: AssignmentType.RESEARCH, label: 'Research',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 10, minSeniors: 0, maxSeniors: 10,
+    },
+    [AssignmentType.ELECTIVE]: {
+        type: AssignmentType.ELECTIVE, label: 'Elective',
+        intensity: 1, isOutpatient: false, duration: 2,
+        minInterns: 0, maxInterns: 20, minSeniors: 0, maxSeniors: 20,
+    },
+    [AssignmentType.VACATION]: {
+        type: AssignmentType.VACATION, label: 'Vacation',
+        intensity: 0, isOutpatient: false, duration: 1,
+        minInterns: 0, maxInterns: 20, minSeniors: 0, maxSeniors: 20,
+        notes: "Manually assigned by request"
+    },
 };

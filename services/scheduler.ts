@@ -1,5 +1,5 @@
-import { Resident, ScheduleGrid, AssignmentType, ScheduleCell, ScheduleStats } from '../types';
-import { TOTAL_WEEKS, COHORT_COUNT } from '../constants';
+import { Resident, ScheduleGrid, AssignmentType, ScheduleCell, ScheduleStats, CohortFairnessMetrics, ResidentFairnessMetrics } from '../types';
+import { TOTAL_WEEKS, COHORT_COUNT, ROTATION_METADATA, CORE_TYPES, REQUIRED_TYPES, ELECTIVE_TYPES, VACATION_TYPE } from '../constants';
 
 // Helper to count specific assignments for a resident so far to balance load
 const getCount = (schedule: ScheduleGrid, residentId: string, type: AssignmentType): number => {
@@ -23,6 +23,43 @@ const isAvailableForBlock = (
     }
   }
   return true;
+};
+
+// Check intensity of adjacent weeks to prevent burnout
+const checkIntensityBalance = (
+    schedule: ScheduleGrid,
+    residentId: string,
+    startWeek: number,
+    duration: number,
+    currentIntensity: number
+): number => {
+    let penalty = 0;
+    
+    // Check week immediately before
+    const prevWeek = startWeek - 1;
+    if (prevWeek >= 0) {
+        const prevAssign = schedule[residentId][prevWeek].assignment;
+        if (prevAssign) {
+            const prevInt = ROTATION_METADATA[prevAssign].intensity;
+            if (prevInt >= 3 && currentIntensity >= 3) {
+                penalty += 100 * (prevInt + currentIntensity); 
+            }
+        }
+    }
+
+    // Check week immediately after
+    const nextWeek = startWeek + duration;
+    if (nextWeek < TOTAL_WEEKS) {
+        const nextAssign = schedule[residentId][nextWeek].assignment;
+        if (nextAssign) {
+            const nextInt = ROTATION_METADATA[nextAssign].intensity;
+            if (nextInt >= 3 && currentIntensity >= 3) {
+                penalty += 100 * (nextInt + currentIntensity);
+            }
+        }
+    }
+    
+    return penalty;
 };
 
 export const generateSchedule = (
@@ -55,81 +92,71 @@ export const generateSchedule = (
     }
   });
 
-  // CONFIGURATION
-  const nightFloatConfig = { 
-      type: AssignmentType.NIGHT_FLOAT, 
-      duration: 4, 
-      minInterns: 1, maxInterns: 2, 
-      minSeniors: 1, maxSeniors: 3,
-      targetWeeks: 4 
+  // Helper to calculate unmet requirements for a resident
+  // Updated to include Short Reqs so Preservation Mode is more effective
+  const getUnmetReqs = (r: Resident): number => {
+      let unmet = 0;
+      let reqs: AssignmentType[] = [];
+      
+      if (r.level === 1) {
+          reqs = [
+              AssignmentType.CARDS, 
+              AssignmentType.ID, 
+              AssignmentType.NEPH, 
+              AssignmentType.PULM,
+              AssignmentType.EM
+          ]; 
+      } else if (r.level === 2) {
+          reqs = [AssignmentType.ONC, AssignmentType.NEURO, AssignmentType.RHEUM];
+      } else if (r.level === 3) {
+          reqs = [AssignmentType.ADD_MED, AssignmentType.ENDO, AssignmentType.GERI, AssignmentType.HPC];
+      }
+      
+      for (const t of reqs) {
+          const meta = ROTATION_METADATA[t];
+          let target = undefined;
+          if (r.level === 1) target = meta.targetIntern;
+          else if (r.level === 2) target = meta.targetPGY2 ?? meta.targetSenior;
+          else target = meta.targetPGY3 ?? meta.targetSenior;
+
+          if (target) {
+             const current = getCount(newSchedule, r.id, t);
+             if (current < target) unmet += (target - current);
+          }
+      }
+      return unmet;
   };
-
-  const coreAssignments = [
-    { 
-      type: AssignmentType.ICU, 
-      duration: 4, 
-      minInterns: 2, maxInterns: 2, 
-      minSeniors: 2, maxSeniors: 2 
-    },
-    { 
-      type: AssignmentType.WARDS_RED, 
-      duration: 4, 
-      minInterns: 2, maxInterns: 2, 
-      minSeniors: 2, maxSeniors: 2 
-    },
-    { 
-      type: AssignmentType.WARDS_BLUE, 
-      duration: 4, 
-      minInterns: 2, maxInterns: 2, 
-      minSeniors: 2, maxSeniors: 2 
-    }
-  ];
-
-  const emConfig = {
-      type: AssignmentType.EM, 
-      duration: 2, 
-      minInterns: 1, maxInterns: 2, 
-      minSeniors: 1, maxSeniors: 2,
-      internTarget: 4 // Up to 4 weeks
-  };
-
-  const internElectives = [
-    { type: AssignmentType.CARDS, duration: 4, target: 4, maxPerWeek: 3 },
-    { type: AssignmentType.ID, duration: 2, target: 2, maxPerWeek: 3 },
-    { type: AssignmentType.NEPH, duration: 2, target: 2, maxPerWeek: 3 },
-    { type: AssignmentType.PULM, duration: 2, target: 2, maxPerWeek: 3 },
-  ];
-
-  const pgy2Requirements = [
-    // Metro ICU removed as per requirement (optional elective now)
-    { type: AssignmentType.ONC, duration: 4, target: 4, maxPerWeek: 2 },
-    { type: AssignmentType.NEURO, duration: 4, target: 4, maxPerWeek: 2 },
-    { type: AssignmentType.RHEUM, duration: 4, target: 4, maxPerWeek: 2 },
-  ];
-
-  const pgy3Requirements = [
-    { type: AssignmentType.ADD_MED, duration: 2, target: 2, maxPerWeek: 2 },
-    { type: AssignmentType.ENDO, duration: 2, target: 2, maxPerWeek: 2 },
-    { type: AssignmentType.GERI, duration: 2, target: 2, maxPerWeek: 2 },
-    { type: AssignmentType.HPC, duration: 2, target: 2, maxPerWeek: 2 },
-  ];
 
   // HELPER: Assign Block
+  // Returns number of residents successfully assigned to this block
   const assignBlock = (
     week: number, 
     type: AssignmentType, 
     duration: number, 
     levelFilter: (l: number) => boolean,
     minNeeded: number, 
-    maxAllowed: number,
-    targetWeeks: number | undefined,
-    currentAssigned: Resident[]
+    maxAllowed: number, 
+    targetWeeks: number | ((r: Resident) => number) | undefined,
+    currentAssigned: Resident[],
+    preservationMode: boolean = false // If true, prioritize residents who have FEWER unmet long requirements (saving those who need them)
   ): number => {
     let filledCount = 0;
+    const meta = ROTATION_METADATA[type];
     
-    // PHASE 1: FILL MINIMUM REQUIREMENTS
-    // We MUST fill these slots. We prioritize those under target.
+    // Safety check: Don't exceed TOTAL (Interns + Seniors) maximum for the rotation
+    const totalMaxPossible = meta.maxInterns + meta.maxSeniors;
+    if (currentAssigned.length >= totalMaxPossible) {
+        return 0; 
+    }
+
+    // Determine Candidates
+    // We do NOT loop fallback durations here. This function tries ONE duration.
+    // Fallback logic is handled by the caller phases.
+    
+    // PHASE A: Prioritize Meeting Minimums (Target Logic)
     while (filledCount < minNeeded) {
+      if (currentAssigned.length >= totalMaxPossible) break;
+
       const candidates = residents.filter(r => 
         levelFilter(r.level) && 
         isAvailableForBlock(newSchedule, r.id, week, duration)
@@ -140,22 +167,41 @@ export const generateSchedule = (
       candidates.sort((a, b) => {
         const countA = getCount(newSchedule, a.id, type);
         const countB = getCount(newSchedule, b.id, type);
+        
+        // Dynamic Target Logic
+        const targetA = typeof targetWeeks === 'function' ? targetWeeks(a) : targetWeeks;
+        const targetB = typeof targetWeeks === 'function' ? targetWeeks(b) : targetWeeks;
 
-        // 1. Target Completion: Strongly prefer those who haven't met target
-        if (targetWeeks !== undefined) {
-          const aMet = countA >= targetWeeks;
-          const bMet = countB >= targetWeeks;
-          if (aMet && !bMet) return 1;
-          if (!aMet && bMet) return -1;
+        // Priority 1: Has NOT met target vs Has met target (For specific type being assigned)
+        if (targetA !== undefined && targetB !== undefined) {
+          const aMet = countA >= targetA;
+          const bMet = countB >= targetB;
+          if (!aMet && bMet) return -1; // Pick A
+          if (aMet && !bMet) return 1;  // Pick B
         }
 
-        // 2. Conflict Avoidance
+        // Priority 1.5: Preservation Mode (For Service Blocks)
+        // If we are assigning a generic service block (like Wards), pick the person who DOESN'T need to save a slot for Requirements.
+        if (preservationMode) {
+            const unmetA = getUnmetReqs(a);
+            const unmetB = getUnmetReqs(b);
+            // If A has fewer unmet reqs, A is "safer" to use for Wards. B needs to be saved.
+            // Sort Ascending by unmet reqs.
+            if (unmetA !== unmetB) return unmetA - unmetB;
+        }
+
+        // Priority 2: Conflict Avoidance
         const aConflicts = currentAssigned.some(existing => a.avoidResidentIds.includes(existing.id) || existing.avoidResidentIds.includes(a.id));
         const bConflicts = currentAssigned.some(existing => b.avoidResidentIds.includes(existing.id) || existing.avoidResidentIds.includes(b.id));
         if (aConflicts && !bConflicts) return 1;
         if (!aConflicts && bConflicts) return -1;
 
-        // 3. Workload Balance
+        // Priority 3: Intensity Balance
+        const penaltyA = checkIntensityBalance(newSchedule, a.id, week, duration, meta.intensity);
+        const penaltyB = checkIntensityBalance(newSchedule, b.id, week, duration, meta.intensity);
+        if (penaltyA !== penaltyB) return penaltyA - penaltyB;
+
+        // Priority 4: Total Count (Balance)
         if (countA !== countB) return countA - countB;
         
         return Math.random() - 0.5;
@@ -169,33 +215,49 @@ export const generateSchedule = (
       filledCount++;
     }
 
-    // PHASE 2: FILL EXTRA CAPACITY (UP TO MAX)
-    // We ONLY fill these if the candidate specifically needs hours to meet target.
-    // We STRICTLY prevent going over target here.
+    // PHASE B: Fill Extra Capacity (Up to Max)
+    // Only runs if we haven't hit maxAllowed yet
     while (filledCount < maxAllowed) {
+      if (currentAssigned.length >= totalMaxPossible) break;
+
       const candidates = residents.filter(r => {
         if (!levelFilter(r.level)) return false;
         if (!isAvailableForBlock(newSchedule, r.id, week, duration)) return false;
         
-        // STRICT CHECK: Assignment must not exceed target
-        if (targetWeeks !== undefined) {
+        // Strict Target Check for "Extra" filling
+        // If we are filling beyond minimum needs, we should NOT pick someone who has already met their target
+        // unless there is no target defined.
+        const target = typeof targetWeeks === 'function' ? targetWeeks(r) : targetWeeks;
+        if (target !== undefined) {
            const current = getCount(newSchedule, r.id, type);
-           if (current + duration > targetWeeks) return false;
+           if (current + duration > target) return false;
         }
         return true;
       });
 
       if (candidates.length === 0) break;
 
-      // Sort just by conflicts and general balance (Target check is handled in filter)
       candidates.sort((a, b) => {
         const countA = getCount(newSchedule, a.id, type);
         const countB = getCount(newSchedule, b.id, type);
         
+        // Preservation Mode (Service Blocks)
+        if (preservationMode) {
+            const unmetA = getUnmetReqs(a);
+            const unmetB = getUnmetReqs(b);
+            if (unmetA !== unmetB) return unmetA - unmetB;
+        }
+
+        // Conflicts
         const aConflicts = currentAssigned.some(existing => a.avoidResidentIds.includes(existing.id) || existing.avoidResidentIds.includes(a.id));
         const bConflicts = currentAssigned.some(existing => b.avoidResidentIds.includes(existing.id) || existing.avoidResidentIds.includes(b.id));
         if (aConflicts && !bConflicts) return 1;
         if (!aConflicts && bConflicts) return -1;
+
+        // Intensity
+        const penaltyA = checkIntensityBalance(newSchedule, a.id, week, duration, meta.intensity);
+        const penaltyB = checkIntensityBalance(newSchedule, b.id, week, duration, meta.intensity);
+        if (penaltyA !== penaltyB) return penaltyA - penaltyB;
         
         if (countA !== countB) return countA - countB;
         return Math.random() - 0.5;
@@ -212,249 +274,201 @@ export const generateSchedule = (
     return filledCount;
   };
 
-  // 2. NIGHT FLOAT ASSIGNMENT (PRIORITY)
-  // Implemented in 2 passes to ensure exact 4-week distribution.
-  
-  // PASS 1: Mandatory Minimum Coverage (Sequential Weeks)
-  // Fills the "Must Have" slots (1 Intern, 1 Senior).
-  for (let w = 0; w < TOTAL_WEEKS; w++) {
-    const assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === nightFloatConfig.type);
-    
-    // Interns Min
-    const currentInterns = assignedResidents.filter(r => r.level === 1);
-    let filledInterns = assignBlock(
-        w, nightFloatConfig.type, nightFloatConfig.duration, (l) => l === 1,
-        Math.max(0, nightFloatConfig.minInterns - currentInterns.length), // Min
-        Math.max(0, nightFloatConfig.minInterns - currentInterns.length), // Max (capped at Min for this pass)
-        nightFloatConfig.targetWeeks, [...assignedResidents]
-    );
+  // ---------------------------------------------------------------------------
+  // NEW ORDER OF OPERATIONS (REQ PRIORITY)
+  // 1. Clinic
+  // 2. Core Minimums (NF, ICU, Wards) - [Preservation Mode Active]
+  // 3. Long Reqs (Cards, Onc) - 4 weeks
+  // 4. Short Reqs (ID, Neph, Pulm) - 2 weeks [MOVED UP]
+  // 5. EM Minimums (1 intern)
+  // 6. EM Capacity (2 interns)
+  // 7. Core Capacity (Wards/ICU)
+  // ---------------------------------------------------------------------------
 
-    // Fallback Interns (Short Blocks if needed for coverage)
-    if (currentInterns.length + filledInterns < nightFloatConfig.minInterns) {
-       let needed = nightFloatConfig.minInterns - (currentInterns.length + filledInterns);
-       for (let d = nightFloatConfig.duration - 1; d >= 1; d--) {
-          if (needed <= 0) break;
-          needed -= assignBlock(w, nightFloatConfig.type, d, (l) => l === 1, needed, needed, undefined, [...assignedResidents]);
-       }
-    }
-
-    // Seniors Min
-    const currentSeniors = assignedResidents.filter(r => r.level > 1);
-    let filledSeniors = assignBlock(
-        w, nightFloatConfig.type, nightFloatConfig.duration, (l) => l > 1,
-        Math.max(0, nightFloatConfig.minSeniors - currentSeniors.length),
-        Math.max(0, nightFloatConfig.minSeniors - currentSeniors.length),
-        nightFloatConfig.targetWeeks, [...assignedResidents]
-    );
-    
-    // Fallback Seniors
-    if (currentSeniors.length + filledSeniors < nightFloatConfig.minSeniors) {
-       let needed = nightFloatConfig.minSeniors - (currentSeniors.length + filledSeniors);
-       for (let d = nightFloatConfig.duration - 1; d >= 1; d--) {
-          if (needed <= 0) break;
-          needed -= assignBlock(w, nightFloatConfig.type, d, (l) => l > 1, needed, needed, undefined, [...assignedResidents]);
-       }
-    }
-  }
-
-  // PASS 2: Target Filling (Randomized Weeks)
-  // Fills up to Max Capacity, BUT ONLY for residents who need weeks to hit 4.
-  // Randomized order prevents front-loading double-coverage.
   const shuffledWeeks = Array.from({length: TOTAL_WEEKS}, (_, i) => i).sort(() => Math.random() - 0.5);
-  for (const w of shuffledWeeks) {
-    const assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === nightFloatConfig.type);
 
-    // Interns Extra (Min=0, Max=Max)
-    const currentInterns = assignedResidents.filter(r => r.level === 1);
-    // We pass 0 as minNeeded so Phase 1 is skipped. Phase 2 (Strict Target) runs.
-    assignBlock(
-        w, nightFloatConfig.type, nightFloatConfig.duration, (l) => l === 1,
-        0, 
-        Math.max(0, nightFloatConfig.maxInterns - currentInterns.length),
-        nightFloatConfig.targetWeeks, [...assignedResidents]
-    );
-
-    // Seniors Extra
-    const currentSeniors = assignedResidents.filter(r => r.level > 1);
-    assignBlock(
-        w, nightFloatConfig.type, nightFloatConfig.duration, (l) => l > 1,
-        0, 
-        Math.max(0, nightFloatConfig.maxSeniors - currentSeniors.length),
-        nightFloatConfig.targetWeeks, [...assignedResidents]
-    );
-  }
-
-  // 3. FILL CORE ROTATIONS (Wards, ICU)
-  // EM is removed from here to separate its priority.
+  // PHASE 2: CORE MINIMUMS - NIGHT FLOAT, WARDS & ICU (4 WEEKS)
+  // This happens first to ensure hospital is staffed. 
+  // We include NF here as a service requirement (min coverage), not a target requirement.
+  const coreLongBlocks = [
+    AssignmentType.NIGHT_FLOAT, // Prioritize NF staffing
+    AssignmentType.ICU, 
+    AssignmentType.WARDS_RED, 
+    AssignmentType.WARDS_BLUE
+  ];
+  
+  // Sequential for consistent coverage check
   for (let w = 0; w < TOTAL_WEEKS; w++) {
-    for (const job of coreAssignments) {
-      const assignedResidents = residents.filter(r => 
-        newSchedule[r.id][w]?.assignment === job.type
-      );
-
-      // --- INTERNS ---
-      const currentInterns = assignedResidents.filter(r => r.level === 1);
-      let filledInterns = assignBlock(
-          w, job.type, job.duration, 
-          (l) => l === 1, 
-          Math.max(0, job.minInterns - currentInterns.length),
-          Math.max(0, job.maxInterns - currentInterns.length),
-          undefined, // No strict target for others
-          [...assignedResidents]
-      );
+    for (const type of coreLongBlocks) {
+      const meta = ROTATION_METADATA[type];
       
-      // Fallback
-      const totalInternsNow = currentInterns.length + filledInterns;
-      if (totalInternsNow < job.minInterns) {
-           let needed = job.minInterns - totalInternsNow;
-           for (let d = job.duration - 1; d >= 1; d--) {
-              if (needed <= 0) break;
-              needed -= assignBlock(w, job.type, d, (l) => l === 1, needed, needed, undefined, [...assignedResidents]);
-           }
+      // Need fresh assignment list for every sub-step to ensure accurate caps
+      let assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+
+      // Interns
+      let currentInterns = assignedResidents.filter(r => r.level === 1);
+      if (currentInterns.length < meta.minInterns) {
+          let needed = meta.minInterns - currentInterns.length;
+          
+          // Try full block first (Priority)
+          // We ENABLE preservationMode=true here to save interns who need Reqs from being used for Wards coverage if others are available
+          let filled = assignBlock(w, type, meta.duration, (l) => l === 1, needed, needed, meta.targetIntern, [...assignedResidents], true);
+          
+          // Fallback: Fragment if necessary for COVERAGE
+          if (filled < needed) {
+              let remaining = needed - filled;
+              assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type); 
+              
+              for (let d = meta.duration - 1; d >= 1; d--) {
+                  if (remaining <= 0) break;
+                  // Fallback fragments also try to preserve if possible, but coverage is key
+                  const newFilled = assignBlock(w, type, d, (l) => l === 1, remaining, remaining, undefined, [...assignedResidents], true);
+                  remaining -= newFilled;
+                  assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+              }
+          }
       }
 
-      // --- SENIORS (PGY2/3) ---
+      // Seniors
+      assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
       const currentSeniors = assignedResidents.filter(r => r.level > 1);
-      let filledSeniors = assignBlock(
-          w, job.type, job.duration, 
-          (l) => l > 1, 
-          Math.max(0, job.minSeniors - currentSeniors.length),
-          Math.max(0, job.maxSeniors - currentSeniors.length),
-          undefined,
-          [...assignedResidents]
-      );
       
-      const totalSeniorsNow = currentSeniors.length + filledSeniors;
-      if (totalSeniorsNow < job.minSeniors) {
-           let needed = job.minSeniors - totalSeniorsNow;
-           for (let d = job.duration - 1; d >= 1; d--) {
-              if (needed <= 0) break;
-              needed -= assignBlock(w, job.type, d, (l) => l > 1, needed, needed, undefined, [...assignedResidents]);
-           }
+      if (currentSeniors.length < meta.minSeniors) {
+          let needed = meta.minSeniors - currentSeniors.length;
+          // Try full block - Seniors also have long reqs (Onc/Neuro/Rheum) so enable preservationMode
+          let filled = assignBlock(w, type, meta.duration, (l) => l > 1, needed, needed, meta.targetSenior, [...assignedResidents], true);
+          
+          // Fallback
+          if (filled < needed) {
+              let remaining = needed - filled;
+              assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+              
+              for (let d = meta.duration - 1; d >= 1; d--) {
+                  if (remaining <= 0) break;
+                  const newFilled = assignBlock(w, type, d, (l) => l > 1, remaining, remaining, undefined, [...assignedResidents], true);
+                  remaining -= newFilled;
+                  assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+              }
+          }
       }
     }
   }
 
-  // 4. FILL SPECIALTY REQUIREMENTS (Electives for Interns / Core for PGY2 / Electives PGY3)
-  // Minimizing Overlap:
-  // We use a multi-pass approach.
-  // Pass 1: Try to fit residents into weeks where the rotation is currently EMPTY (concurrency 0 -> 1).
-  // Pass 2: Allow filling up to maxPerWeek (concurrency 1 -> Max).
-  const concurrencyPasses = [1, 10]; // 10 is effectively "Max"
+  // PHASE 3: REQUIRED ELECTIVES - 4 WEEKS (Long Blocks)
+  const longElectives = [
+      { type: AssignmentType.CARDS, level: 1 },
+      { type: AssignmentType.ONC, level: 2 },
+      { type: AssignmentType.NEURO, level: 2 },
+      { type: AssignmentType.RHEUM, level: 2 },
+  ];
+
+  const concurrencyPasses = [1, 10]; 
 
   for (const limit of concurrencyPasses) {
-      // Re-shuffle weeks for each pass to avoid bias
-      const passWeeks = Array.from({length: TOTAL_WEEKS}, (_, i) => i).sort(() => Math.random() - 0.5);
-      
-      for (const w of passWeeks) {
-        
-        // 4a. Intern Required Electives
-        for (const elect of internElectives) {
-          const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === elect.type);
-          const currentCount = assigned.length;
-          const effectiveMax = Math.min(elect.maxPerWeek, limit);
-          
-          if (currentCount < effectiveMax) {
-             assignBlock(
-                w, elect.type, elect.duration, 
-                (l) => l === 1,
-                0, 
-                effectiveMax - currentCount, 
-                elect.target, 
-                [...assigned]
-              );
+      for (const w of shuffledWeeks) {
+          for (const req of longElectives) {
+              const meta = ROTATION_METADATA[req.type];
+              const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === req.type);
+              
+              const maxForLevel = req.level === 1 ? meta.maxInterns : meta.maxSeniors;
+              const target = req.level === 1 ? meta.targetIntern : meta.targetSenior;
+              
+              const effectiveMax = Math.min(maxForLevel, limit);
+              if (assigned.length < effectiveMax) {
+                 assignBlock(w, req.type, meta.duration, (l) => l === req.level, 0, effectiveMax - assigned.length, target, [...assigned]);
+              }
           }
-        }
-
-        // 4b. PGY2 Required Rotations (Onc, Neuro, Rheum)
-        for (const elect of pgy2Requirements) {
-          const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === elect.type);
-          const currentCount = assigned.length;
-          const effectiveMax = Math.min(elect.maxPerWeek, limit);
-          
-          if (currentCount < effectiveMax) {
-              assignBlock(
-                w, elect.type, elect.duration, 
-                (l) => l === 2, 
-                0, 
-                effectiveMax - currentCount, 
-                elect.target, 
-                [...assigned]
-              );
-          }
-        }
-
-        // 4c. PGY3 Required Electives (Add Med, Endo, Geri, HPC)
-        for (const elect of pgy3Requirements) {
-          const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === elect.type);
-          const currentCount = assigned.length;
-          const effectiveMax = Math.min(elect.maxPerWeek, limit);
-          
-          if (currentCount < effectiveMax) {
-              assignBlock(
-                w, elect.type, elect.duration, 
-                (l) => l === 3, 
-                0, 
-                effectiveMax - currentCount, 
-                elect.target, 
-                [...assigned]
-              );
-          }
-        }
       }
   }
 
-  // 5. FILL EM (Emergency Medicine)
-  // Processed after required electives.
-  // Interns have a strict "Up to 4 weeks" target.
-  for (let w = 0; w < TOTAL_WEEKS; w++) {
-    const assignedResidents = residents.filter(r => 
-      newSchedule[r.id][w]?.assignment === emConfig.type
-    );
+  // PHASE 4: SHORT REQUIRED ELECTIVES (2 WEEKS) - MOVED BEFORE EM
+  const shortElectives = [
+      { type: AssignmentType.ID, level: 1 },
+      { type: AssignmentType.NEPH, level: 1 },
+      { type: AssignmentType.PULM, level: 1 },
+      
+      { type: AssignmentType.ADD_MED, level: 3 },
+      { type: AssignmentType.ENDO, level: 3 },
+      { type: AssignmentType.GERI, level: 3 },
+      { type: AssignmentType.HPC, level: 3 },
+  ];
 
-    // --- INTERNS (Target: 4 weeks max) ---
-    const currentInterns = assignedResidents.filter(r => r.level === 1);
-    let filledInterns = assignBlock(
-        w, emConfig.type, emConfig.duration, 
-        (l) => l === 1, 
-        Math.max(0, emConfig.minInterns - currentInterns.length),
-        Math.max(0, emConfig.maxInterns - currentInterns.length),
-        emConfig.internTarget, // <--- TARGET APPLIED: "Up to 4 weeks"
-        [...assignedResidents]
-    );
-    
-    // Fallback for coverage
-    const totalInternsNow = currentInterns.length + filledInterns;
-    if (totalInternsNow < emConfig.minInterns) {
-         let needed = emConfig.minInterns - totalInternsNow;
-         for (let d = emConfig.duration - 1; d >= 1; d--) {
-            if (needed <= 0) break;
-            needed -= assignBlock(w, emConfig.type, d, (l) => l === 1, needed, needed, emConfig.internTarget, [...assignedResidents]);
-         }
-    }
-
-    // --- SENIORS (Standard Logic) ---
-    const currentSeniors = assignedResidents.filter(r => r.level > 1);
-    let filledSeniors = assignBlock(
-        w, emConfig.type, emConfig.duration, 
-        (l) => l > 1, 
-        Math.max(0, emConfig.minSeniors - currentSeniors.length),
-        Math.max(0, emConfig.maxSeniors - currentSeniors.length),
-        undefined, // Seniors don't have this strict cap mentioned
-        [...assignedResidents]
-    );
-    
-    const totalSeniorsNow = currentSeniors.length + filledSeniors;
-    if (totalSeniorsNow < emConfig.minSeniors) {
-         let needed = emConfig.minSeniors - totalSeniorsNow;
-         for (let d = emConfig.duration - 1; d >= 1; d--) {
-            if (needed <= 0) break;
-            needed -= assignBlock(w, emConfig.type, d, (l) => l > 1, needed, needed, undefined, [...assignedResidents]);
-         }
-    }
+  for (const limit of concurrencyPasses) {
+      for (const w of shuffledWeeks) {
+          for (const req of shortElectives) {
+              const meta = ROTATION_METADATA[req.type];
+              const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === req.type);
+              
+              const maxForLevel = req.level === 1 ? meta.maxInterns : meta.maxSeniors;
+              const target = req.level === 1 ? meta.targetIntern : meta.targetSenior;
+              
+              const effectiveMax = Math.min(maxForLevel, limit);
+              if (assigned.length < effectiveMax) {
+                 assignBlock(w, req.type, meta.duration, (l) => l === req.level, 0, effectiveMax - assigned.length, target, [...assigned]);
+              }
+          }
+      }
   }
 
-  // 6. FILL GAPS WITH GENERIC ELECTIVES
+  // PHASE 5: EMERGENCY MEDICINE (2 WEEKS)
+  const emMeta = ROTATION_METADATA[AssignmentType.EM];
+  
+  // Step 5a: Minimum Coverage (Ensure 1 intern per week)
+  for (let w = 0; w < TOTAL_WEEKS; w++) {
+      let assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === AssignmentType.EM);
+      let interns = assigned.filter(r => r.level === 1);
+      
+      if (interns.length < emMeta.minInterns) {
+          let needed = emMeta.minInterns - interns.length;
+          // Try 2 weeks with TARGET CHECK
+          let filled = assignBlock(w, AssignmentType.EM, emMeta.duration, (l) => l === 1, needed, needed, emMeta.targetIntern, [...assigned]);
+          
+          if (filled < needed) {
+             // Fallback 1: Try 1 week with TARGET CHECK
+             let partialFilled = assignBlock(w, AssignmentType.EM, 1, (l) => l === 1, needed - filled, needed - filled, emMeta.targetIntern, [...assigned]);
+             filled += partialFilled;
+          }
+
+          if (filled < needed) {
+             // Fallback 2: EMERGENCY - IGNORE TARGETS (Coverage Critical)
+             let remaining = needed - filled;
+             // assigned array needs refresh? No, assignBlock updates newSchedule directly, but we pass local array 'assigned' for conflict checks.
+             // We should re-fetch if we are desperate, but array spread is usually okay for small nums.
+             assignBlock(w, AssignmentType.EM, 1, (l) => l === 1, remaining, remaining, undefined, [...assigned]);
+          }
+      }
+  }
+
+  // Step 5b: Fill EM Capacity/Targets (Up to maxInterns, usually 2)
+  for (const w of shuffledWeeks) {
+      const assigned = residents.filter(r => newSchedule[r.id][w]?.assignment === AssignmentType.EM);
+      const interns = assigned.filter(r => r.level === 1);
+      
+      // Only fill if we have room AND people need targets met
+      if (interns.length < emMeta.maxInterns) {
+          assignBlock(w, AssignmentType.EM, emMeta.duration, (l) => l === 1, 0, emMeta.maxInterns - interns.length, emMeta.targetIntern, [...assigned]);
+      }
+  }
+
+  // PHASE 6: CORE MAXIMUMS (Capacity Fill) - STRICT BLOCKS ONLY
+  // Wards/ICU are good "sponges" for remaining time.
+  const spongeServices = [AssignmentType.ICU, AssignmentType.WARDS_RED, AssignmentType.WARDS_BLUE];
+
+  for (const w of shuffledWeeks) { 
+      for (const type of spongeServices) {
+        const meta = ROTATION_METADATA[type];
+        
+        let assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+        const currentInterns = assignedResidents.filter(r => r.level === 1);
+        assignBlock(w, type, meta.duration, (l) => l === 1, 0, Math.max(0, meta.maxInterns - currentInterns.length), meta.targetIntern, [...assignedResidents]);
+  
+        assignedResidents = residents.filter(r => newSchedule[r.id][w]?.assignment === type);
+        const currentSeniors = assignedResidents.filter(r => r.level > 1);
+        assignBlock(w, type, meta.duration, (l) => l > 1, 0, Math.max(0, meta.maxSeniors - currentSeniors.length), meta.targetSenior, [...assignedResidents]);
+      }
+  }
+
+  // 7. FILL GAPS WITH GENERIC ELECTIVES
   residents.forEach(r => {
     for (let w = 0; w < TOTAL_WEEKS; w++) {
         if (!newSchedule[r.id][w].assignment) {
@@ -468,48 +482,171 @@ export const generateSchedule = (
 
 export const calculateStats = (residents: Resident[], schedule: ScheduleGrid): ScheduleStats => {
   const stats: ScheduleStats = {};
-  
-  // Create safe default object
-  const createDefaultStats = () => ({
-      [AssignmentType.WARDS_RED]: 0,
-      [AssignmentType.WARDS_BLUE]: 0,
-      [AssignmentType.ICU]: 0,
-      [AssignmentType.NIGHT_FLOAT]: 0,
-      [AssignmentType.EM]: 0,
-      [AssignmentType.CLINIC]: 0,
-      [AssignmentType.ELECTIVE]: 0,
-      [AssignmentType.VACATION]: 0,
-      [AssignmentType.MET_WARDS]: 0,
-      [AssignmentType.CARDS]: 0,
-      [AssignmentType.ID]: 0,
-      [AssignmentType.NEPH]: 0,
-      [AssignmentType.PULM]: 0,
-      [AssignmentType.METRO]: 0,
-      [AssignmentType.ONC]: 0,
-      [AssignmentType.NEURO]: 0,
-      [AssignmentType.RHEUM]: 0,
-      [AssignmentType.ADD_MED]: 0,
-      [AssignmentType.ENDO]: 0,
-      [AssignmentType.GERI]: 0,
-      [AssignmentType.HPC]: 0,
-      [AssignmentType.RESEARCH]: 0,
-      [AssignmentType.CCMA]: 0,
-      [AssignmentType.HF]: 0,
-      [AssignmentType.CC_ICU]: 0,
-      [AssignmentType.ENT]: 0,
-  });
 
   residents.forEach(r => {
-    stats[r.id] = createDefaultStats();
+    const residentStats: Record<AssignmentType, number> = {} as any;
+    // Initialize all types to 0
+    Object.values(AssignmentType).forEach(t => {
+      residentStats[t] = 0;
+    });
 
-    if (schedule[r.id]) {
-      schedule[r.id].forEach(cell => {
-        if (cell.assignment && stats[r.id][cell.assignment] !== undefined) {
-          stats[r.id][cell.assignment]++;
+    const weeks = schedule[r.id];
+    if (weeks) {
+      weeks.forEach(cell => {
+        if (cell.assignment) {
+          residentStats[cell.assignment] = (residentStats[cell.assignment] || 0) + 1;
         }
       });
     }
+
+    stats[r.id] = residentStats;
   });
 
   return stats;
+};
+
+export const calculateFairnessMetrics = (residents: Resident[], schedule: ScheduleGrid): CohortFairnessMetrics[] => {
+  // Helper to calculate SD
+  const getSD = (arr: number[], mean: number) => {
+    if (arr.length === 0) return 0;
+    const variance = arr.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / arr.length;
+    return Math.sqrt(variance);
+  };
+
+  // Group by level
+  const levels = [1, 2, 3];
+  const metrics: CohortFairnessMetrics[] = levels.map(level => {
+    const levelResidents = residents.filter(r => r.level === level);
+    
+    const residentMetrics: ResidentFairnessMetrics[] = levelResidents.map(r => {
+      let core = 0;
+      let elective = 0;
+      let required = 0;
+      let vacation = 0;
+      let intensityScore = 0;
+      let currentStreak = 0;
+      let maxStreak = 0;
+
+      const weeks = schedule[r.id] || [];
+      weeks.forEach(cell => {
+        if (!cell.assignment) return;
+        
+        const type = cell.assignment;
+        const meta = ROTATION_METADATA[type];
+        
+        // Categories
+        if (CORE_TYPES.includes(type)) core++;
+        else if (REQUIRED_TYPES.includes(type)) required++;
+        else if (ELECTIVE_TYPES.includes(type)) elective++;
+        
+        if (type === VACATION_TYPE) vacation++;
+
+        // Intensity
+        if (meta) {
+          intensityScore += meta.intensity;
+          if (meta.intensity >= 3) {
+            currentStreak++;
+          } else {
+            maxStreak = Math.max(maxStreak, currentStreak);
+            currentStreak = 0;
+          }
+        }
+      });
+      maxStreak = Math.max(maxStreak, currentStreak);
+
+      return {
+        id: r.id,
+        name: r.name,
+        level: r.level,
+        coreWeeks: core,
+        electiveWeeks: elective,
+        requiredWeeks: required,
+        vacationWeeks: vacation,
+        totalIntensityScore: intensityScore,
+        maxIntensityStreak: maxStreak
+      };
+    });
+
+    // Calculate Means
+    const cores = residentMetrics.map(m => m.coreWeeks);
+    const electives = residentMetrics.map(m => m.electiveWeeks);
+    const intensities = residentMetrics.map(m => m.totalIntensityScore);
+
+    const meanCore = cores.length ? cores.reduce((a, b) => a + b, 0) / cores.length : 0;
+    const meanElective = electives.length ? electives.reduce((a, b) => a + b, 0) / electives.length : 0;
+    const meanIntensity = intensities.length ? intensities.reduce((a, b) => a + b, 0) / intensities.length : 0;
+
+    const sdCore = getSD(cores, meanCore);
+    const sdElective = getSD(electives, meanElective);
+    const sdIntensity = getSD(intensities, meanIntensity);
+
+    // Heuristic Score (100 - Penalties)
+    // Penalize high SD
+    let score = 100 - (sdCore * 5) - (sdElective * 2) - (sdIntensity * 0.5);
+    score = Math.max(0, Math.min(100, score));
+
+    return {
+      level,
+      residents: residentMetrics,
+      meanCore,
+      sdCore,
+      meanElective,
+      sdElective,
+      meanIntensity,
+      sdIntensity,
+      fairnessScore: Math.round(score)
+    };
+  });
+
+  return metrics;
+};
+
+export const calculateDiversityStats = (residents: Resident[], schedule: ScheduleGrid): Record<string, number> => {
+  const scores: Record<string, number> = {};
+  const matrix: Record<string, Set<string>> = {};
+
+  residents.forEach(r => matrix[r.id] = new Set());
+
+  // Assignments where interaction occurs
+  const interactionTypes = [
+    AssignmentType.WARDS_RED,
+    AssignmentType.WARDS_BLUE,
+    AssignmentType.ICU,
+    AssignmentType.NIGHT_FLOAT,
+    AssignmentType.EM,
+    AssignmentType.MET_WARDS,
+    AssignmentType.METRO,
+    AssignmentType.CC_ICU,
+    AssignmentType.CLINIC
+  ];
+
+  for (let w = 0; w < TOTAL_WEEKS; w++) {
+    const teams: Record<string, string[]> = {};
+
+    residents.forEach(r => {
+      const type = schedule[r.id]?.[w]?.assignment;
+      if (type && interactionTypes.includes(type)) {
+        if (!teams[type]) teams[type] = [];
+        teams[type].push(r.id);
+      }
+    });
+
+    Object.values(teams).forEach(members => {
+      if (members.length < 2) return;
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          matrix[members[i]].add(members[j]);
+          matrix[members[j]].add(members[i]);
+        }
+      }
+    });
+  }
+
+  residents.forEach(r => {
+    const uniquePartners = matrix[r.id].size;
+    const totalPossible = residents.length - 1;
+    scores[r.id] = totalPossible > 0 ? (uniquePartners / totalPossible) * 100 : 0;
+  });
+
+  return scores;
 };

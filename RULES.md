@@ -12,16 +12,16 @@ This document outlines the logic and constraints used by the **Residency Schedul
 
 The scheduler attempts to fill shifts based on the following minimum and maximum staffing requirements per week.
 
-| Rotation | Duration | Min Interns (PGY1) | Max Interns (PGY1) | Min Seniors (PGY2/3) | Max Seniors (PGY2/3) | Notes |
+| Rotation | Duration | Min Interns | Max Interns | Min Seniors | Max Seniors | Total Team Size |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Night Float** | 4 Weeks | 1 | 2 | 1 | 3 | Strict 4-week cap per resident. |
-| **ICU** | 4 Weeks | 2 | 2 | 2 | 2 | |
-| **Wards (Red)** | 4 Weeks | 2 | 2 | 2 | 2 | |
-| **Wards (Blue)** | 4 Weeks | 2 | 2 | 2 | 2 | |
-| **Emergency** | 2 Weeks | 1 | 2 | 1 | 2 | **Interns: UP TO 4 weeks max.** |
+| **Night Float** | 4 Weeks | 1 | 2 | 1 | 3 | 2 - 5 |
+| **ICU** | 4 Weeks | 2 | 2 | 2 | 2 | 4 |
+| **Wards (Red)** | 4 Weeks | 2 | 3 | 1 | 2 | 3 - 5 |
+| **Wards (Blue)** | 4 Weeks | 2 | 3 | 1 | 2 | 3 - 5 |
+| **Emergency** | 2 Weeks | 1 | 2 | 0 | 2 | 1 - 4 |
 
 ### PGY1 Required Electives
-In addition to the above, Interns (PGY1) are required to complete the following electives. The scheduler attempts to place these in any remaining gaps after core rotations are assigned but *before* Emergency Medicine to ensure space is preserved.
+In addition to the above, Interns (PGY1) are required to complete the following electives.
 
 *   **Cardiology (CARDS)**: 4 Weeks
 *   **Infectious Disease (ID)**: 2 Weeks
@@ -49,10 +49,23 @@ Residents in their third year (PGY3) are required to complete the following elec
 ### General Block Assignment
 1.  **Availability Check**: Residents must be free for the full duration of the block (e.g., 4 contiguous weeks).
 2.  **Clinic Conflict**: A block cannot be assigned if it overlaps with a mandatory Clinic week, unless the rotation specifically allows interruption (currently, most 4-week blocks try to fit *between* clinic weeks or the logic handles gaps).
-3.  **Prioritization**:
-    *   Residents with fewer assigned weeks of that specific rotation type are prioritized (Load Balancing).
-    *   Residents with specific "Avoid" constraints with currently assigned team members are deprioritized.
-    *   **Priorities**: Night Float > Wards/ICU > PGY1 Required Electives > PGY2 Required Rotations > PGY3 Required Electives > Emergency Medicine > General Electives.
+3.  **Prioritization & Phased Loading**:
+    The algorithm runs in distinct phases to protect critical constraints and ensure required electives are not blocked by flexible rotations.
+
+    *   **Phase 1: Minimum Coverage Guarantee**:
+        Fills **Wards, ICU, and Emergency Medicine** to their *minimum* required staffing levels. This ensures that flexible rotations (like Wards with 1-3 interns) do not consume all available interns before stricter constraints (EM min 1) are met.
+    
+    *   **Phase 2: Long Required Electives (4 Weeks)**:
+        Fills 4-week blocks (Cards, Onc, Neuro, Rheum). Because these are long blocks that must fit between Clinic weeks, they are scheduled *before* the schedule becomes fragmented by shorter blocks. The algorithm uses a **concurrency pass** (filling 1 slot per week first) to minimize overlap.
+    
+    *   **Phase 3: Short Required Electives (2 Weeks)**:
+        Fills remaining 2-week requirements (PGY1 ID/Neph/Pulm, PGY3 Reqs). This phase also uses a concurrency-check loop to actively minimize overlap where possible.
+
+    *   **Phase 4: Maximum Capacity Fill**:
+        Fills **Wards, ICU, and EM** up to their *maximum* capacity (e.g. up to 5 team members) to balance workload and minimize generic electives.
+    
+    *   **Phase 5: Flexible Electives**:
+        Fills remaining gaps with Generic Electives.
 
 ### Night Float (Special Handling)
 To ensure fairness, Night Float uses a strict **Two-Pass System**:
@@ -67,12 +80,6 @@ To ensure fairness, Night Float uses a strict **Two-Pass System**:
     *   Fills remaining "Extra" slots (up to Max capacity).
     *   *Constraint*: **Strictly** prohibits assigning anyone who has already met the 4-week target.
     *   *Goal*: Uses excess capacity solely to help residents reach their quota without over-burdening them.
-
-### Required Electives Optimization
-For required individual rotations (Cards, Onc, etc.), the scheduler uses a **Multi-Pass Minimize Overlap** strategy:
-*   **Pass 1**: Iterates through all weeks and attempts to assign residents only to weeks where the rotation is currently empty (Concurrency = 1).
-*   **Pass 2**: Iterates again to fill remaining requirements, allowing overlap up to the maximum limit (usually 2 or 3).
-*   This ensures that required rotations are distributed as evenly as possible across the year, reducing the chance of multiple residents being on the same specialist service simultaneously unless necessary.
 
 ## 4. Gaps & Electives
 *   Any week left unassigned after all mandatory and required rotations are processed is automatically filled with **Generic Elective**.

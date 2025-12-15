@@ -26,9 +26,9 @@ This document outlines the characteristics of each assignment type available in 
 | Assignment Code | Full Name | Category | Setting | Intensity Score | Max concurrent assignees |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **ICU** | Intensive Care Unit | Core | Inpatient | 5 | 5 |
-| **WARDS-R** | Wards Red | Core | Inpatient | 4 | 5 |
+| **WARDS-R** | Wards Red | Core | Inpatient | 4 | 6 |
 | **NF** | Night Float | Core | Inpatient | 4 | 4 |
-| **WARDS-B** | Wards Blue | Core | Inpatient | 3 | 5 |
+| **WARDS-B** | Wards Blue | Core | Inpatient | 3 | 6 |
 | **EM** | Emergency Medicine | Core | Inpatient | 2 | 3 |
 | **CCIM** | Clinic | Core | **Outpatient** | 2 | 9 |
 | **MET Wards** | Met Wards (Overflow) | Core/Voluntary | Inpatient | 3 | 5 |

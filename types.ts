@@ -1,3 +1,4 @@
+
 export type PgyLevel = 1 | 2 | 3;
 
 export interface Resident {
@@ -55,4 +56,50 @@ export type ScheduleGrid = Record<string, ScheduleCell[]>;
 
 export interface ScheduleStats {
   [residentId: string]: Record<AssignmentType, number>;
+}
+
+export interface RotationConfig {
+  type: AssignmentType;
+  label: string;
+  intensity: number; // 1-5
+  isOutpatient: boolean;
+  duration: number; // Standard block duration
+  
+  // Staffing Constraints per week
+  minInterns: number;
+  maxInterns: number;
+  minSeniors: number;
+  maxSeniors: number;
+  
+  // Targets (Total weeks per resident per year)
+  targetIntern?: number; 
+  targetSenior?: number; // General senior target
+  targetPGY2?: number;   // Specific PGY2 target
+  targetPGY3?: number;   // Specific PGY3 target
+  
+  notes?: string;
+}
+
+export interface ResidentFairnessMetrics {
+    id: string;
+    name: string;
+    level: number;
+    coreWeeks: number;
+    electiveWeeks: number;
+    requiredWeeks: number;
+    vacationWeeks: number;
+    totalIntensityScore: number;
+    maxIntensityStreak: number;
+}
+
+export interface CohortFairnessMetrics {
+    level: number;
+    residents: ResidentFairnessMetrics[];
+    meanCore: number;
+    sdCore: number;
+    meanElective: number;
+    sdElective: number;
+    meanIntensity: number;
+    sdIntensity: number;
+    fairnessScore: number;
 }

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Resident, PgyLevel } from '../types';
-import { Trash2, Plus, UserPlus, Upload, Pencil, Check, X } from 'lucide-react';
+import { Trash2, Plus, UserPlus, Upload, Pencil, Check, X, Download, FileText, Info } from 'lucide-react';
 import { COHORT_COUNT } from '../constants';
 
 interface Props {
@@ -20,6 +20,9 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
   const [editLevel, setEditLevel] = useState<PgyLevel>(1);
   const [editCohort, setEditCohort] = useState<number>(0);
 
+  // Delete Confirmation State
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAdd = () => {
@@ -36,13 +39,30 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
     setNewResidentName('');
   };
 
-  const handleRemove = (id: string) => {
-    if(confirm('Are you sure you want to remove this resident?')) {
+  const handleRemoveClick = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (deleteConfirmId === id) {
+        // Confirmed, delete now
         setResidents(prev => prev.filter(r => r.id !== id));
+        setDeleteConfirmId(null);
+    } else {
+        // First click, show confirm
+        setDeleteConfirmId(id);
+        // Cancel any editing if active
+        setEditingId(null);
     }
   };
 
+  const handleCancelDelete = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDeleteConfirmId(null);
+  };
+
   const startEditing = (resident: Resident) => {
+    setDeleteConfirmId(null);
     setEditingId(resident.id);
     setEditName(resident.name);
     setEditLevel(resident.level);
@@ -74,7 +94,29 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
   };
 
   const handleImportClick = () => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+        fileInputRef.current.value = ''; // Ensure change event fires even for same file
+        fileInputRef.current.click();
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const csvContent = `Name,Level,Cohort
+John Doe,1,0
+Jane Smith,2,1
+Robert Brown,3,2
+Alice Johnson,1,
+David Wilson,2,4`;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'resident_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,18 +129,16 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
       processCSV(text);
     };
     reader.readAsText(file);
-    // Reset input so same file can be selected again
-    e.target.value = '';
   };
 
   const processCSV = (text: string) => {
-    const lines = text.split('\n');
+    const lines = text.split(/\r?\n/); // Handle both CRLF and LF
     const newResidents: Resident[] = [];
     
-    // Check for header row (heuristic: check if first row has "Name" or "Level")
+    // Check for header row
     let startIndex = 0;
-    const firstLineLower = lines[0].toLowerCase();
-    if (firstLineLower.includes('name') || firstLineLower.includes('level') || firstLineLower.includes('cohort')) {
+    const firstLineLower = lines[0].trim().toLowerCase();
+    if (firstLineLower.startsWith('name') || firstLineLower.includes('level') || firstLineLower.includes('cohort')) {
         startIndex = 1;
     }
 
@@ -108,7 +148,6 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
         const line = lines[i].trim();
         if (!line) continue;
         
-        // Split by comma
         const parts = line.split(',').map(p => p.trim());
         
         // Flexible format: 
@@ -117,14 +156,12 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
         if (parts.length < 2) continue; 
 
         const name = parts[0];
-        // Remove quotes if present
         const cleanName = name.replace(/^"|"$/g, '');
         
         const levelStr = parts[1];
         const level = parseInt(levelStr) as PgyLevel;
         
-        // Validation
-        if (!cleanName || ![1, 2, 3].includes(level)) continue;
+        if (!cleanName || isNaN(level) || ![1, 2, 3].includes(level)) continue;
 
         let cohort = 0;
         if (parts[2]) {
@@ -149,11 +186,12 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
     }
 
     if (newResidents.length > 0) {
-        if(confirm(`Found ${newResidents.length} residents. Replace existing list?`)) {
+        if(confirm(`Successfully parsed ${newResidents.length} residents.\n\nDo you want to REPLACE your current list with these residents?\n(Cancel to abort import)`)) {
             setResidents(newResidents);
+            alert(`Imported ${newResidents.length} residents successfully.`);
         }
     } else {
-        alert("No valid residents found. Format expected: Name, Level (1-3), [Cohort (0-4)]");
+        alert("Import Failed: No valid residents found in the file.\n\nPlease ensure your CSV matches the template:\nName, Level (1-3), Cohort (0-4)");
     }
   };
 
@@ -168,19 +206,52 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
       />
 
       <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-        <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-            <UserPlus className="w-5 h-5" /> Manage Residents
-            </h2>
-            <button
-                onClick={handleImportClick}
-                className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 px-3 py-1.5 rounded hover:bg-blue-50 transition-colors"
-            >
-                <Upload size={14} /> Import CSV
-            </button>
+        <div className="flex justify-between items-start mb-6">
+            <div>
+                 <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+                    <UserPlus className="w-5 h-5" /> Manage Residents
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">Add residents manually or bulk import via CSV.</p>
+            </div>
+           
+            <div className="flex gap-2">
+                <button
+                    onClick={handleDownloadTemplate}
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-50 transition-colors"
+                >
+                    <Download size={14} /> Download Template
+                </button>
+                <button
+                    onClick={handleImportClick}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 px-3 py-1.5 rounded hover:bg-blue-50 transition-colors"
+                >
+                    <Upload size={14} /> Import CSV
+                </button>
+            </div>
+        </div>
+
+        {/* Import Rules / Legend */}
+        <div className="bg-blue-50 border border-blue-100 rounded-md p-4 mb-6 text-sm text-blue-900 flex gap-3 items-start">
+             <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+             <div>
+                <div className="font-bold mb-1">CSV Format Guidelines:</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-blue-800/80 text-xs">
+                    <ul className="list-disc list-inside space-y-1">
+                        <li><strong>Column 1 (Name):</strong> Resident Full Name (Required).</li>
+                        <li><strong>Column 2 (Level):</strong> PGY Level (1, 2, or 3) (Required).</li>
+                    </ul>
+                    <ul className="list-disc list-inside space-y-1">
+                        <li><strong>Column 3 (Cohort):</strong> 0-4 (Optional). 0=A, 1=B, etc.</li>
+                        <li>If cohort is blank, it will be auto-assigned.</li>
+                    </ul>
+                </div>
+                <div className="mt-2 text-xs font-mono bg-white/50 p-1.5 rounded border border-blue-100 inline-block text-blue-700">
+                    Example: "Dr. Smith, 1, 0"
+                </div>
+             </div>
         </div>
         
-        <div className="flex gap-4 items-end flex-wrap">
+        <div className="flex gap-4 items-end flex-wrap border-t pt-6">
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input
@@ -221,9 +292,6 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
           >
             <Plus size={16} /> Add
           </button>
-        </div>
-        <div className="mt-2 text-xs text-gray-400">
-            CSV Format: Name, Level, Cohort (optional). Example: "John Doe, 1, 0"
         </div>
       </div>
 
@@ -294,21 +362,43 @@ export const ResidentManager: React.FC<Props> = ({ residents, setResidents }) =>
                         <div className="col-span-2 text-center font-mono">
                             {String.fromCharCode(65 + r.cohort)}
                         </div>
-                        <div className="col-span-2 text-center flex justify-center gap-2">
-                            <button 
-                                onClick={() => startEditing(r)}
-                                className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
-                                title="Edit"
-                            >
-                                <Pencil size={16} />
-                            </button>
-                            <button 
-                                onClick={() => handleRemove(r.id)}
-                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
-                                title="Delete"
-                            >
-                                <Trash2 size={16} />
-                            </button>
+                        <div className="col-span-2 text-center flex justify-center gap-2 items-center">
+                            {deleteConfirmId === r.id ? (
+                                <>
+                                    <button 
+                                        onClick={(e) => handleRemoveClick(e, r.id)}
+                                        className="bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700 animate-pulse font-medium shadow-sm whitespace-nowrap"
+                                        title="Click again to confirm deletion"
+                                    >
+                                        Delete?
+                                    </button>
+                                    <button 
+                                        onClick={handleCancelDelete}
+                                        className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
+                                        title="Cancel"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button 
+                                        onClick={() => startEditing(r)}
+                                        className="text-blue-500 hover:text-blue-700 p-1 rounded hover:bg-blue-50"
+                                        title="Edit"
+                                    >
+                                        <Pencil size={16} />
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => handleRemoveClick(e, r.id)}
+                                        className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </>
+                            )}
                         </div>
                       </>
                     )}
