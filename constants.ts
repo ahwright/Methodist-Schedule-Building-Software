@@ -1,14 +1,13 @@
-
 import { AssignmentType, Resident, RotationConfig, ClinicalSetting } from './types';
 
 export const TOTAL_WEEKS = 52;
 export const COHORT_COUNT = 5;
 
-// Initial Data Generation Helpers
+// Initial Data Generation Helpers - Updated for specific 38 resident distribution
 export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
   const residents: Resident[] = [];
   
-  // 15 PGY1 (Numbers 1-15)
+  // 15 PGY1
   for (let i = 1; i <= 15; i++) {
     residents.push({
       id: `pgy1-${i}`,
@@ -19,8 +18,8 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
     });
   }
 
-  // 15 PGY2 (Numbers 16-30)
-  for (let i = 16; i <= 30; i++) {
+  // 14 PGY2
+  for (let i = 16; i <= 29; i++) {
     residents.push({
       id: `pgy2-${i}`,
       name: `Resident ${i}`,
@@ -30,8 +29,8 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
     });
   }
 
-  // 15 PGY3 (Numbers 31-45)
-  for (let i = 31; i <= 45; i++) {
+  // 9 PGY3
+  for (let i = 30; i <= 38; i++) {
     residents.push({
       id: `pgy3-${i}`,
       name: `Resident ${i}`,
@@ -44,11 +43,11 @@ export const GENERATE_INITIAL_RESIDENTS = (): Resident[] => {
   return residents;
 };
 
-// Requirements Definition - Synchronized with rules.md
+// Requirements Definition - Updated for 8w ICU / 12w Wards / 2w PGY2 Specialties
 export const REQUIREMENTS: Record<number, { type: AssignmentType, label: string, target: number }[]> = {
   1: [
     { type: AssignmentType.WARDS_RED, label: 'Wards (Red/Blue)', target: 12 },
-    { type: AssignmentType.ICU, label: 'ICU', target: 4 },
+    { type: AssignmentType.ICU, label: 'ICU', target: 8 },
     { type: AssignmentType.NIGHT_FLOAT, label: 'Night Float', target: 2 },
     { type: AssignmentType.EM, label: 'Emergency Medicine', target: 4 },
     { type: AssignmentType.CARDS, label: 'Cardiology', target: 4 },
@@ -57,17 +56,17 @@ export const REQUIREMENTS: Record<number, { type: AssignmentType, label: string,
     { type: AssignmentType.PULM, label: 'Pulmonology', target: 2 },
   ],
   2: [
-    { type: AssignmentType.WARDS_RED, label: 'Senior Wards', target: 8 },
-    { type: AssignmentType.ICU, label: 'Senior ICU', target: 4 },
+    { type: AssignmentType.WARDS_RED, label: 'Senior Wards', target: 12 },
+    { type: AssignmentType.ICU, label: 'Senior ICU', target: 8 },
     { type: AssignmentType.NIGHT_FLOAT, label: 'Night Float', target: 2 },
-    { type: AssignmentType.ONC, label: 'Onc', target: 4 },
-    { type: AssignmentType.NEURO, label: 'Neuro', target: 4 },
-    { type: AssignmentType.RHEUM, label: 'Rheum', target: 4 },
-    { type: AssignmentType.GI, label: 'GI', target: 4 },
+    { type: AssignmentType.ONC, label: 'Onc', target: 2 },
+    { type: AssignmentType.NEURO, label: 'Neuro', target: 2 },
+    { type: AssignmentType.RHEUM, label: 'Rheum', target: 2 },
+    { type: AssignmentType.GI, label: 'GI', target: 2 },
   ],
   3: [
-    { type: AssignmentType.WARDS_RED, label: 'Senior Wards', target: 8 },
-    { type: AssignmentType.ICU, label: 'Senior ICU', target: 4 },
+    { type: AssignmentType.WARDS_RED, label: 'Senior Wards', target: 12 },
+    { type: AssignmentType.ICU, label: 'Senior ICU', target: 8 },
     { type: AssignmentType.NIGHT_FLOAT, label: 'Night Float', target: 2 },
     { type: AssignmentType.ADD_MED, label: 'Add Med', target: 2 },
     { type: AssignmentType.ENDO, label: 'Endo', target: 2 },
@@ -93,7 +92,7 @@ export const ASSIGNMENT_COLORS: Record<AssignmentType, string> = {
   [AssignmentType.ONC]: 'bg-pink-300 text-pink-900 border-pink-400',
   [AssignmentType.NEURO]: 'bg-violet-300 text-violet-900 border-violet-400',
   [AssignmentType.RHEUM]: 'bg-emerald-200 text-emerald-900 border-emerald-300',
-  [AssignmentType.GI]: 'bg-amber-300 text-amber-900 border-amber-400',
+  [AssignmentType.GI]: 'bg-amber-300 text-amber-900 border-amber-300',
   [AssignmentType.ADD_MED]: 'bg-stone-300 text-stone-900 border-stone-400',
   [AssignmentType.ENDO]: 'bg-orange-100 text-orange-800 border-orange-200',
   [AssignmentType.GERI]: 'bg-slate-300 text-slate-900 border-slate-400',
@@ -145,7 +144,7 @@ export const ASSIGNMENT_LABELS: Record<AssignmentType, string> = {
   [AssignmentType.CLINIC]: 'Clinic (CCIM)',
   [AssignmentType.ELECTIVE]: 'Elective',
   [AssignmentType.VACATION]: 'Vacation',
-  [AssignmentType.MET_WARDS]: 'Met Wards',
+  [AssignmentType.MET_WARDS]: 'Metro Wards',
   [AssignmentType.CARDS]: 'Cardiology',
   [AssignmentType.ID]: 'Infectious Disease',
   [AssignmentType.NEPH]: 'Nephrology',
@@ -175,12 +174,12 @@ export const ASSIGNMENT_ABBREVIATIONS: Record<AssignmentType, string> = {
   [AssignmentType.CLINIC]: 'CCIM',
   [AssignmentType.ELECTIVE]: 'ELEC',
   [AssignmentType.VACATION]: 'VAC',
-  [AssignmentType.MET_WARDS]: 'MET',
+  [AssignmentType.MET_WARDS]: 'METRO-W',
   [AssignmentType.CARDS]: 'CARDS',
   [AssignmentType.ID]: 'ID',
   [AssignmentType.NEPH]: 'NEPH',
   [AssignmentType.PULM]: 'PULM',
-  [AssignmentType.METRO]: 'METRO',
+  [AssignmentType.METRO]: 'METRO-I',
   [AssignmentType.ONC]: 'ONC',
   [AssignmentType.NEURO]: 'NEURO',
   [AssignmentType.RHEUM]: 'RHEUM',
@@ -196,27 +195,32 @@ export const ASSIGNMENT_ABBREVIATIONS: Record<AssignmentType, string> = {
   [AssignmentType.ENT]: 'ENT',
 };
 
-// Configuration of each rotation's constraints and metadata
+/**
+ * ACGME Compliance Configuration:
+ * Max supervision is 2 teams per attending.
+ * Each team is typically 1 senior + 2 interns.
+ * Total service limit = 2 seniors + 4 interns = 6 trainees.
+ */
 export const ROTATION_METADATA: Record<AssignmentType, RotationConfig> = {
     [AssignmentType.ICU]: { 
         type: AssignmentType.ICU, label: 'ICU', 
         intensity: 5, setting: ClinicalSetting.CRITICAL_CARE, duration: 4,
-        minInterns: 2, maxInterns: 2, minSeniors: 2, maxSeniors: 2,
+        minInterns: 2, maxInterns: 4, minSeniors: 1, maxSeniors: 2, // Max 6 total
     },
     [AssignmentType.WARDS_RED]: {
         type: AssignmentType.WARDS_RED, label: 'Wards Red',
         intensity: 4, setting: ClinicalSetting.INPATIENT, duration: 4,
-        minInterns: 2, maxInterns: 3, minSeniors: 1, maxSeniors: 2, 
+        minInterns: 2, maxInterns: 4, minSeniors: 1, maxSeniors: 2, // Max 6 total
     },
     [AssignmentType.WARDS_BLUE]: {
         type: AssignmentType.WARDS_BLUE, label: 'Wards Blue',
         intensity: 3, setting: ClinicalSetting.INPATIENT, duration: 4,
-        minInterns: 2, maxInterns: 3, minSeniors: 1, maxSeniors: 2, 
+        minInterns: 2, maxInterns: 4, minSeniors: 1, maxSeniors: 2, // Max 6 total
     },
     [AssignmentType.NIGHT_FLOAT]: {
         type: AssignmentType.NIGHT_FLOAT, label: 'Night Float',
         intensity: 4, setting: ClinicalSetting.INPATIENT, duration: 2,
-        minInterns: 1, maxInterns: 2, minSeniors: 1, maxSeniors: 3,
+        minInterns: 1, maxInterns: 2, minSeniors: 1, maxSeniors: 2, // Max 4 total
         targetIntern: 2, targetPGY2: 2, targetPGY3: 2,
     },
     [AssignmentType.EM]: {
@@ -231,13 +235,13 @@ export const ROTATION_METADATA: Record<AssignmentType, RotationConfig> = {
         minInterns: 0, maxInterns: 10, minSeniors: 0, maxSeniors: 10,
     },
     [AssignmentType.MET_WARDS]: {
-        type: AssignmentType.MET_WARDS, label: 'Met Wards',
+        type: AssignmentType.MET_WARDS, label: 'Metro Wards',
         intensity: 3, setting: ClinicalSetting.INPATIENT, duration: 4,
         minInterns: 0, maxInterns: 3, minSeniors: 0, maxSeniors: 2, 
     },
     [AssignmentType.CARDS]: {
         type: AssignmentType.CARDS, label: 'Cardiology',
-        intensity: 2, setting: ClinicalSetting.INPATIENT, duration: 4,
+        intensity: 2, setting: ClinicalSetting.INPATIENT, duration: 2, // Changed from 4 to 2
         minInterns: 0, maxInterns: 4, minSeniors: 0, maxSeniors: 0,
         targetIntern: 4,
     },
@@ -261,27 +265,27 @@ export const ROTATION_METADATA: Record<AssignmentType, RotationConfig> = {
     },
     [AssignmentType.ONC]: {
         type: AssignmentType.ONC, label: 'Heme/Onc',
-        intensity: 1, setting: ClinicalSetting.INPATIENT, duration: 4,
+        intensity: 1, setting: ClinicalSetting.INPATIENT, duration: 2,
         minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
-        targetPGY2: 4, targetSenior: 4,
+        targetPGY2: 2, targetSenior: 2,
     },
     [AssignmentType.NEURO]: {
         type: AssignmentType.NEURO, label: 'Neurology',
-        intensity: 1, setting: ClinicalSetting.INPATIENT, duration: 4,
+        intensity: 1, setting: ClinicalSetting.INPATIENT, duration: 2,
         minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
-        targetPGY2: 4, targetSenior: 4,
+        targetPGY2: 2, targetSenior: 2,
     },
     [AssignmentType.RHEUM]: {
         type: AssignmentType.RHEUM, label: 'Rheumatology',
-        intensity: 1, setting: ClinicalSetting.OUTPATIENT, duration: 4,
+        intensity: 1, setting: ClinicalSetting.OUTPATIENT, duration: 2,
         minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
-        targetPGY2: 4, targetSenior: 4,
+        targetPGY2: 2, targetSenior: 2,
     },
     [AssignmentType.GI]: {
         type: AssignmentType.GI, label: 'Gastroenterology',
-        intensity: 1, setting: ClinicalSetting.OUTPATIENT, duration: 4,
+        intensity: 1, setting: ClinicalSetting.OUTPATIENT, duration: 2,
         minInterns: 0, maxInterns: 0, minSeniors: 0, maxSeniors: 2,
-        targetPGY2: 4, targetSenior: 4,
+        targetPGY2: 2, targetSenior: 2,
     },
     [AssignmentType.ADD_MED]: {
         type: AssignmentType.ADD_MED, label: 'Addiction Med',

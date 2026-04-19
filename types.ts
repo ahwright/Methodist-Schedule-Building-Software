@@ -26,7 +26,7 @@ export enum AssignmentType {
   CLINIC = 'CCIM',
   ELECTIVE = 'ELECTIVE',
   VACATION = 'VAC',
-  MET_WARDS = 'Met Wards', // Fallback or extra ward
+  MET_WARDS = 'Metro Wards', // Renamed from Met Wards
   
   // PGY1 Required Electives
   CARDS = 'Cards',

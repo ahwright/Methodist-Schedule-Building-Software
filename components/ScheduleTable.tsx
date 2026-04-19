@@ -1,15 +1,19 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Resident, ScheduleGrid, AssignmentType, ScheduleCell } from '../types';
 import { TOTAL_WEEKS, ASSIGNMENT_COLORS, ASSIGNMENT_LABELS, ASSIGNMENT_ABBREVIATIONS } from '../constants';
-import { User, Lock, Calendar } from 'lucide-react';
+import { User, Lock, Calendar, SortAsc, Users, GraduationCap, Layers, Filter, Pencil } from 'lucide-react';
+import { SortKey } from '../App';
 
 interface Props {
   residents: Resident[];
   schedule: ScheduleGrid;
+  sortKey: SortKey;
+  onSortKeyChange: (key: SortKey) => void;
   onCellClick: (residentId: string, week: number) => void;
   onLockWeek: (weekIdx: number) => void;
   onLockResident: (residentId: string) => void;
   onToggleLock: (residentId: string, weekIdx: number) => void;
+  onRenameResident?: (id: string, newName: string) => void;
 }
 
 const WEEKS = Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1);
@@ -33,10 +37,13 @@ interface TooltipData {
 export const ScheduleTable: React.FC<Props> = ({ 
   residents, 
   schedule, 
+  sortKey,
+  onSortKeyChange,
   onCellClick,
   onLockWeek,
   onLockResident,
-  onToggleLock
+  onToggleLock,
+  onRenameResident
 }) => {
   // Resizable Column State
   const [colWidth, setColWidth] = useState(160);
@@ -44,13 +51,26 @@ export const ScheduleTable: React.FC<Props> = ({
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
+  // Renaming State
+  const [editingResidentId, setEditingResidentId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
+
   // Tooltip State
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingResidentId && editInputRef.current) {
+        editInputRef.current.focus();
+        editInputRef.current.select();
+    }
+  }, [editingResidentId]);
 
   // Handle Resizing
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation(); // Prevent triggering row lock
+    e.stopPropagation(); 
     resizingRef.current = true;
     startXRef.current = e.pageX;
     startWidthRef.current = colWidth;
@@ -74,16 +94,34 @@ export const ScheduleTable: React.FC<Props> = ({
     document.body.style.cursor = '';
   };
 
+  // Sort Logic
+  const sortedResidents = useMemo(() => {
+    const list = [...residents];
+    return list.sort((a, b) => {
+      if (sortKey === 'alphabetical') {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortKey === 'pgy') {
+        if (a.level !== b.level) return a.level - b.level;
+        return a.name.localeCompare(b.name);
+      }
+      if (sortKey === 'cohort') {
+        if (a.cohort !== b.cohort) return a.cohort - b.cohort;
+        if (a.level !== b.level) return a.level - b.level;
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+  }, [residents, sortKey]);
+
   // Tooltip Logic
   const handleMouseEnter = (e: React.MouseEvent, resident: Resident, weekIdx: number, assignment: AssignmentType) => {
     if (!assignment) return;
 
-    // 1. Calculate Progress (Week X of Y)
     const residentSchedule = schedule[resident.id] || [];
-    const totalWeeks = residentSchedule.filter(c => c.assignment === assignment).length;
-    const currentWeekNum = residentSchedule.slice(0, weekIdx + 1).filter(c => c.assignment === assignment).length;
+    const totalWeeks = residentSchedule.filter(c => c && c.assignment === assignment).length;
+    const currentWeekNum = residentSchedule.slice(0, weekIdx + 1).filter(c => c && c.assignment === assignment).length;
 
-    // 2. Find Peers
     const peers = residents
       .filter(r => r.id !== resident.id && schedule[r.id]?.[weekIdx]?.assignment === assignment);
 
@@ -102,9 +140,58 @@ export const ScheduleTable: React.FC<Props> = ({
     setTooltip(null);
   };
 
+  const startRenaming = (resident: Resident) => {
+    setEditingResidentId(resident.id);
+    setTempName(resident.name);
+  };
+
+  const saveRenaming = () => {
+    if (editingResidentId && onRenameResident) {
+        onRenameResident(editingResidentId, tempName);
+    }
+    setEditingResidentId(null);
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') saveRenaming();
+    if (e.key === 'Escape') setEditingResidentId(null);
+  };
+
   return (
     <div className="flex flex-col h-full bg-white border rounded-lg shadow-sm overflow-hidden relative">
-      <div className="overflow-auto spreadsheet-container relative flex-1 pb-32">
+      {/* View Toolbar */}
+      <div className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
+            <Filter size={14} /> View mode:
+          </div>
+          <div className="flex bg-white rounded-md border p-1 gap-1 shadow-sm">
+            <button 
+              onClick={() => onSortKeyChange('pgy')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-all ${sortKey === 'pgy' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              <GraduationCap size={14} /> PGY Year
+            </button>
+            <button 
+              onClick={() => onSortKeyChange('cohort')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-all ${sortKey === 'cohort' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              <Layers size={14} /> Cohort
+            </button>
+            <button 
+              onClick={() => onSortKeyChange('alphabetical')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition-all ${sortKey === 'alphabetical' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              <SortAsc size={14} /> Alphabetical
+            </button>
+          </div>
+        </div>
+        <div className="text-[10px] text-gray-400 italic">
+          * Double-click name to rename. Right-click name or week header to toggle locks.
+        </div>
+      </div>
+
+      <div className="overflow-auto spreadsheet-container relative flex-1 pb-64">
         <table className="border-separate border-spacing-0 w-max">
           <thead className="sticky top-0 z-30 bg-gray-50 text-xs uppercase text-gray-500 font-semibold shadow-sm h-12">
             <tr>
@@ -114,7 +201,6 @@ export const ScheduleTable: React.FC<Props> = ({
               >
                 <div className="flex items-center justify-between h-full px-2 relative">
                   <span>Trainee</span>
-                  {/* Resize Handle */}
                   <div 
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 active:bg-blue-600 transition-colors z-50"
                     onMouseDown={startResize}
@@ -143,9 +229,10 @@ export const ScheduleTable: React.FC<Props> = ({
             </tr>
           </thead>
           <tbody className="text-sm">
-            {residents.map((resident) => {
+            {sortedResidents.map((resident) => {
               const residentSchedule = schedule[resident.id] || [];
-              
+              const isEditing = editingResidentId === resident.id;
+
               return (
                 <tr key={resident.id} className="hover:bg-gray-50 transition-colors">
                   <td 
@@ -155,12 +242,26 @@ export const ScheduleTable: React.FC<Props> = ({
                         e.preventDefault();
                         onLockResident(resident.id);
                     }}
-                    title={`Right-click to toggle lock for ${resident.name}`}
+                    onDoubleClick={() => startRenaming(resident)}
+                    title={`Double-click to rename, Right-click to toggle lock`}
                   >
-                    <div className="flex flex-col truncate">
-                      <span className="flex items-center gap-2 truncate" title={resident.name}>
-                        {resident.name}
-                      </span>
+                    <div className="flex flex-col truncate relative pr-6">
+                      {isEditing ? (
+                        <input
+                            ref={editInputRef}
+                            type="text"
+                            value={tempName}
+                            onChange={(e) => setTempName(e.target.value)}
+                            onBlur={saveRenaming}
+                            onKeyDown={handleRenameKeyDown}
+                            className="w-full border-blue-500 border-2 rounded px-1 py-0 text-sm focus:outline-none"
+                        />
+                      ) : (
+                        <span className="flex items-center gap-2 truncate" title={resident.name}>
+                            {resident.name}
+                            <Pencil size={12} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={(e) => { e.stopPropagation(); startRenaming(resident); }} />
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400 truncate">
                         PGY-{resident.level} • Cohort {String.fromCharCode(65 + resident.cohort)}
                       </span>
@@ -215,10 +316,9 @@ export const ScheduleTable: React.FC<Props> = ({
         </table>
       </div>
 
-      {/* Portal-like Tooltip */}
       {tooltip && (
         <div 
-            className="fixed z-50 bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px] w-64"
+            className="fixed z-[150] bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px] w-64"
             style={{ left: tooltip.x, top: tooltip.y }}
         >
             <div className="font-bold text-sm mb-1">{tooltip.assignmentName}</div>
@@ -248,7 +348,6 @@ export const ScheduleTable: React.FC<Props> = ({
                 </div>
             )}
             
-            {/* Arrow */}
             <div className="absolute left-1/2 -bottom-1 w-2 h-2 bg-gray-900 transform -translate-x-1/2 rotate-45"></div>
         </div>
       )}

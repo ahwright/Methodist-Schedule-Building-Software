@@ -13,10 +13,25 @@ export const RequirementsStats: React.FC<Props> = ({ residents, schedule }) => {
   
   const getResidentCount = (resId: string, type: AssignmentType) => {
     const weeks = schedule[resId] || [];
+    
+    // Aggregate Wards types (Red, Blue, Metro Wards)
     if (type === AssignmentType.WARDS_RED) {
-        return weeks.filter(c => c.assignment === AssignmentType.WARDS_RED || c.assignment === AssignmentType.WARDS_BLUE).length;
+        return weeks.filter(c => c && (
+            c.assignment === AssignmentType.WARDS_RED || 
+            c.assignment === AssignmentType.WARDS_BLUE || 
+            c.assignment === AssignmentType.MET_WARDS
+        )).length;
     }
-    return weeks.filter(c => c.assignment === type).length;
+    
+    // Aggregate ICU types (Primary ICU, Metro ICU)
+    if (type === AssignmentType.ICU) {
+        return weeks.filter(c => c && (
+            c.assignment === AssignmentType.ICU || 
+            c.assignment === AssignmentType.METRO
+        )).length;
+    }
+    
+    return weeks.filter(c => c && c.assignment === type).length;
   };
 
   const renderGroup = (level: number) => {
@@ -107,7 +122,7 @@ export const RequirementsStats: React.FC<Props> = ({ residents, schedule }) => {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 pb-32">
+    <div className="h-full overflow-y-auto bg-gray-50 p-6 pb-64">
         <div className="max-w-6xl mx-auto">
              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8">
                 <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -115,7 +130,7 @@ export const RequirementsStats: React.FC<Props> = ({ residents, schedule }) => {
                     Program Requirements Verification
                 </h2>
                 <div className="mt-2 text-gray-600 space-y-2">
-                    <p>Verify that every resident meets their specific PGY-level graduation requirements.</p>
+                    <p>Verify that every resident meets their specific PGY-level graduation requirements. Note: Metro overflow rotations are counted toward their respective core requirements (Wards/ICU).</p>
                 </div>
             </div>
 

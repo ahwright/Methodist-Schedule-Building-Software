@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ScheduleGrid, Resident, AssignmentType, ScheduleCell } from '../types';
-import { calculateFairnessMetrics, calculateScheduleScore } from '../services/scheduler';
+import { calculateFairnessMetrics, calculateScheduleScore, calculateRequirementsScore } from '../services/scheduler';
 import { Check, X, Sparkles, Loader2, Info } from 'lucide-react';
 
 interface ScheduleSession {
@@ -30,6 +30,7 @@ interface ScheduleMetrics {
   name: string;
   score: number;
   avgFairness: number;
+  reqFulfillment: number;
   totalNF: number;
   streakSD: number;
   maxStreak: number;
@@ -42,6 +43,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
     return schedules.map(s => {
       const groups = calculateFairnessMetrics(residents, s.data);
       const score = calculateScheduleScore(residents, s.data);
+      const reqFulfillment = calculateRequirementsScore(residents, s.data);
       
       // Calculate Aggregate Metrics across all PGYs
       const avgFairness = groups.reduce((sum, g) => sum + g.fairnessScore, 0) / groups.length;
@@ -69,6 +71,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
         name: s.name,
         score,
         avgFairness,
+        reqFulfillment,
         totalNF,
         streakSD,
         maxStreak,
@@ -81,6 +84,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
     const r = {
       score: { min: -1000, max: 0 },
       fairness: { min: 100, max: 0 },
+      reqs: { min: 100, max: 0 },
       totalNF: { min: 10000, max: 0 },
       streakSD: { min: 100, max: 0 },
       streak: { min: 100, max: 0 },
@@ -98,6 +102,9 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
 
       r.fairness.min = Math.min(r.fairness.min, m.avgFairness);
       r.fairness.max = Math.max(r.fairness.max, m.avgFairness);
+
+      r.reqs.min = Math.min(r.reqs.min, m.reqFulfillment);
+      r.reqs.max = Math.max(r.reqs.max, m.reqFulfillment);
       
       r.totalNF.min = Math.min(r.totalNF.min, m.totalNF);
       r.totalNF.max = Math.max(r.totalNF.max, m.totalNF);
@@ -140,7 +147,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
         <div className="p-6 border-b flex justify-between items-center bg-gray-50">
           <div>
              <h2 className="text-xl font-bold text-gray-800">Schedule Comparison</h2>
-             <p className="text-sm text-gray-500">Compare metrics across generated schedules to find the optimal balance.</p>
+             <p className="text-sm text-gray-500">Compare metrics across generated schedules. "Req Fulfillment" tracks the clinical curriculum completion.</p>
           </div>
           <div className="flex items-center gap-4">
               {progress ? (
@@ -181,6 +188,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
               <tr className="bg-gray-100 border-b border-gray-300 text-gray-700 uppercase text-xs">
                 <th className="py-3 px-4 text-left font-bold">Schedule</th>
                 <th className="py-3 px-4 text-center font-bold">Total Score</th>
+                <th className="py-3 px-4 text-center font-bold">Req Fulfillment</th>
                 <th className="py-3 px-4 text-center font-bold">Fairness %</th>
                 <th className="py-3 px-4 text-center font-bold">Total Night Shifts</th>
                 <th className="py-3 px-4 text-center font-bold">Streak Spread (SD)</th>
@@ -200,6 +208,10 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
 
                     <td className={`py-3 px-4 text-center font-mono ${getColor(m.score, ranges.score.min, ranges.score.max, true)}`}>
                        {Math.round(m.score)}
+                    </td>
+
+                    <td className={`py-3 px-4 text-center font-mono ${getColor(m.reqFulfillment, ranges.reqs.min, ranges.reqs.max, true)}`}>
+                       {m.reqFulfillment.toFixed(1)}%
                     </td>
                     
                     <td className={`py-3 px-4 text-center font-mono ${getColor(m.avgFairness, ranges.fairness.min, ranges.fairness.max, true)}`}>
@@ -246,7 +258,7 @@ export const ScheduleComparison: React.FC<Props> = ({ residents, schedules, acti
                </div>
                <div className="flex items-center gap-1.5 border-l border-gray-300 pl-4 text-gray-500">
                     <Info size={14} />
-                    <span>Score = <strong>Fairness</strong> + 600 - (StreakSD × 20) - (TotalNF × 2) - MaxStreak</span>
+                    <span>Score = <strong>Req Fulfillment</strong> + <strong>Fairness</strong> - <strong>Violations</strong> - <strong>Streak Inequity</strong></span>
                </div>
            </div>
            <button onClick={onClose} disabled={isGenerating} className="bg-white border hover:bg-gray-100 px-6 py-2 rounded font-medium text-gray-700 transition-colors disabled:opacity-50">

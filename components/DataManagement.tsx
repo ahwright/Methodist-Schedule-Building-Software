@@ -33,19 +33,28 @@ export const DataManagement: React.FC<Props> = ({
   const jsonInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportJSON = () => {
-    const data = {
-        residents,
-        schedules,
-        exportDate: new Date().toISOString(),
-        version: "2.0"
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `residency_scheduler_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const data = {
+          residents,
+          schedules,
+          exportDate: new Date().toISOString(),
+          version: "2.0"
+      };
+      const jsonString = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `residency_scheduler_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Delay revocation to ensure browser handles the download stream
+      setTimeout(() => URL.revokeObjectURL(url), 500);
+    } catch (err) {
+      console.error("Export JSON failed", err);
+      alert("Failed to generate backup file.");
+    }
   };
 
   const handleImportClick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,16 +64,20 @@ export const DataManagement: React.FC<Props> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
         try {
-            const parsed = JSON.parse(event.target?.result as string);
-            if (parsed.residents && parsed.schedules) {
+            const content = event.target?.result as string;
+            if (!content) return;
+            
+            const parsed = JSON.parse(content);
+            if (parsed && parsed.residents && parsed.schedules) {
                 if (confirm("This will overwrite all current residents and all schedule versions. Are you sure you want to proceed?")) {
                     onImportJSON(parsed);
                     alert("Data restored successfully!");
                 }
             } else {
-                alert("Invalid file format. This JSON file does not appear to be a Residency Scheduler backup.");
+                alert("Invalid file format. This JSON file does not appear to be a valid Residency Scheduler backup.");
             }
         } catch (err) {
+            console.error("Import JSON failed", err);
             alert("Error parsing JSON file. Please ensure it is a valid backup file.");
         }
     };

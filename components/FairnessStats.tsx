@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Resident, ScheduleGrid } from '../types';
 import { calculateFairnessMetrics } from '../services/scheduler';
@@ -56,7 +57,7 @@ export const FairnessStats: React.FC<Props> = ({ residents, schedule }) => {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 pb-32 relative">
+    <div className="h-full overflow-y-auto bg-gray-50 p-6 pb-64 relative">
       <div className="max-w-6xl mx-auto space-y-8">
         
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -151,7 +152,7 @@ export const FairnessStats: React.FC<Props> = ({ residents, schedule }) => {
 
                                     <th 
                                         className="text-right py-3 px-2 font-medium relative whitespace-nowrap cursor-help group"
-                                        onMouseEnter={(e) => handleHeaderEnter(e, 'Streak', 'Longest run of consecutive high-intensity weeks (Allows 1-week grace period for Clinic/Off weeks).')}
+                                        onMouseEnter={(e) => handleHeaderEnter(e, 'Streak', 'Longest run of consecutive high-intensity weeks.')}
                                         onMouseLeave={handleMouseLeave}
                                     >
                                         <div className="flex items-center justify-end gap-1">
@@ -228,7 +229,7 @@ export const FairnessStats: React.FC<Props> = ({ residents, schedule }) => {
 
       {tooltip && (
           <div 
-            className="fixed z-[9999] bg-gray-900 text-white text-xs rounded p-2 shadow-xl max-w-xs pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px]"
+            className="fixed z-[250] bg-gray-900 text-white text-xs rounded p-2 shadow-xl max-w-xs pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px]"
             style={{ left: tooltip.x, top: tooltip.y }}
           >
               <div className="font-bold mb-1 border-b border-gray-700 pb-1">{tooltip.title}</div>

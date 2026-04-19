@@ -27,6 +27,7 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
   // Resizable Column State - Reduced default width
   const [colWidth, setColWidth] = useState(150);
   const resizingRef = useRef(false);
+  // Fix: Declare startXRef and startWidthRef as refs and remove stray assignment using 'e'
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
@@ -60,12 +61,14 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
     document.body.style.cursor = '';
   };
 
-  // Define Row Order
+  // Define Row Order - Updated to move METRO and MET_WARDS up
   const sortedAssignmentTypes = useMemo(() => {
     const priorityOrder = [
       AssignmentType.WARDS_RED,
       AssignmentType.WARDS_BLUE,
       AssignmentType.ICU,
+      AssignmentType.METRO,     // Move up right under ICU
+      AssignmentType.MET_WARDS, // Move up right under ICU/Metro
       AssignmentType.NIGHT_FLOAT,
       AssignmentType.EM,
       AssignmentType.CLINIC,
@@ -167,7 +170,7 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
          <p className="text-sm text-gray-500">View staffing levels vs. constraints. Hover over row headers for rule details.</p>
        </div>
        
-       <div className="flex-1 overflow-auto spreadsheet-container pb-32">
+       <div className="flex-1 overflow-auto spreadsheet-container pb-64">
          <table className="border-separate border-spacing-0 w-max">
            <thead className="sticky top-0 z-30 bg-gray-50 text-xs text-gray-500 font-semibold h-10 shadow-sm">
              <tr>
@@ -259,7 +262,7 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
        {/* Cell Tooltip (Assignees) */}
        {cellTooltip && (
         <div 
-            className="fixed z-50 bg-gray-900 text-white text-xs rounded-lg py-3 px-4 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px] min-w-[200px]"
+            className="fixed z-[200] bg-gray-900 text-white text-xs rounded-lg py-3 px-4 shadow-xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-8px] min-w-[200px]"
             style={{ left: cellTooltip.x, top: cellTooltip.y }}
         >
             <div className="flex items-center gap-2 mb-2 border-b border-gray-700 pb-1">
@@ -298,7 +301,7 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
       {/* Row Tooltip (Metadata Constraints) */}
       {rowTooltip && (
         <div 
-            className="fixed z-50 bg-white text-gray-800 text-xs rounded-lg shadow-xl border border-gray-200 p-4 pointer-events-none transform -translate-y-1/2 ml-2 min-w-[240px]"
+            className="fixed z-[200] bg-white text-gray-800 text-xs rounded-lg shadow-xl border border-gray-200 p-4 pointer-events-none transform -translate-y-1/2 ml-2 min-w-[240px]"
             style={{ left: rowTooltip.x, top: rowTooltip.y }}
         >
             <h4 className="font-bold text-sm text-blue-700 mb-2 border-b pb-1">
@@ -314,7 +317,6 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
                             <span className="font-bold">{meta.intensity}/5</span>
 
                             <span className="text-gray-500">Setting:</span>
-                            {/* Fixed property access error: replaced non-existent 'isOutpatient' with 'setting' */}
                             <span className="font-medium">{meta.setting}</span>
 
                             <span className="text-gray-500">Duration:</span>
@@ -343,12 +345,6 @@ export const AssignmentStats: React.FC<Props> = ({ residents, schedule }) => {
                                     meta.targetSenior !== undefined && <div>Seniors: {meta.targetSenior} weeks</div>
                                 )}
                                 {meta.targetPGY3 !== undefined && <div>PGY-3: {meta.targetPGY3} weeks</div>}
-                            </div>
-                        )}
-                        
-                        {meta.notes && (
-                            <div className="text-xs text-gray-500 italic mt-2 border-t pt-1">
-                                {meta.notes}
                             </div>
                         )}
                     </div>
